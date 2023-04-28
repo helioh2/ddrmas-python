@@ -1,6 +1,9 @@
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
-from ddrmas_python.models.Agent import Agent
+if TYPE_CHECKING:
+    from ddrmas_python.models.Agent import Agent
 
 from ddrmas_python.models.LLiteral import LLiteral
 from ddrmas_python.models.Rule import Rule

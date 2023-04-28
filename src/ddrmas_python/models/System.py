@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -23,5 +24,6 @@ class System():
     def remove_agent(self, agent: Agent):
         self.agents.remove(agent)
 
-
+    def similar_enough(self, p:LLiteral, q:LLiteral) -> bool:
+        return self.sim_function(p, q) >= self.sim_threshold
     

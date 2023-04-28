@@ -1,7 +1,11 @@
 
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 import enum
+if TYPE_CHECKING:
+    from ddrmas_python.models.Agent import Agent
 
 from ddrmas_python.models.LLiteral import LLiteral
 
@@ -23,5 +27,8 @@ class Rule:
         ## TODO: fazer a representaçao str e repr
         return hash("".join([str(self.head)]+[str(b) for b in self.body]))
 
-
+    def localize(self, agent: Agent) -> Rule:
+        localized_head = self.head.localize(agent)
+        localized_body = [b.localize(agent) for b in self.body]
+        return Rule(localized_head, localized_body)
     

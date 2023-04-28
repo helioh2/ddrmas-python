@@ -14,3 +14,5 @@ class Literal:
     def negated(self) -> Literal:
         return Literal(not self.positive, self.pred, self.terms)
     
+    def __eq__(self, __value: object) -> bool:
+        return self.positive == __value.positive and self.pred == __value.pred
