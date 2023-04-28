@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
 from ddrmas_python.models.Argument import ArgType, Argument, TLabel
 from ddrmas_python.models.Answer import Answer, TruthValue
-from ddrmas_python.models.LLiteral import LLiteral
+from ddrmas_python.models.ILLiteral import ILLiteral
+from ddrmas_python.models.LLiteral import LLiteral, Sign
 from ddrmas_python.models.QueryFocus import QueryFocus
 
 from ddrmas_python.models.Rule import Rule, RuleType
@@ -61,12 +63,122 @@ class Agent:
         tv_p = tv_p_strict
 
         print("CHEGUEI AQUI (APÓS STRICT FINDING)")
-        # for p1 in rlits:
-        #     args_p1 = self.find_defeasible_args(p1, extended_kb, focus, hist)
-        #     args_not_p1 = self.find_defeasible_args(p1.negated(), extended_kb, focus, hist)
+        for p1 in rlits:
+            args_p1 = await self.find_defeasible_args(p1, extended_kb, focus, hist)
+            args_not_p1 = await self.find_defeasible_args(
+                p1.negated(), extended_kb, focus, hist
+            )
 
         # TODO continuaçao
 
+        return Answer(p, focus, tv_p, args_p1, args_not_p1)
+
+    async def find_defeasible_args(
+        self,
+        p1: LLiteral,
+        extended_kb: set[Rule],
+        focus: QueryFocus,
+        hist: list[LLiteral],
+    ):
+        async def build_subarguments_based_on_rule(rule: Rule):
+            possible_subargs_r = list()
+            map_arg_to_q = dict()
+            # serve como indice reverso para recordar qual argumento conclui qual q (pois o q se perde quando se usa l-literais similares)
+
+            for q in rule.body:
+                args_q = None
+                if q.definer == Sign.SCHEMATIC:
+                    args_q = await self.query_agents(
+                        self.system.agents, q, focus, hist_p1
+                    )
+                elif isinstance(q.definer, Agent):
+                    args_q = await self.query_agents([q.definer], q, focus, hist_p1)
+                if not args_q:
+                    return None  # não foi possível construir args para todos os membros do corpo
+
+                # else
+                for arg in args_q:
+                    map_arg_to_q[arg] = q
+
+                possible_subargs_r.add(args_q)
+
+            # else
+            return possible_subargs_r, map_arg_to_q
+
+        args_p1 = set()
+        hist_p1 = hist + [p1]
+
+        rules_with_head_p1 = {rule for rule in extended_kb if rule.head == p1}
+        for rule in rules_with_head_p1:
+            possible_subargs_r, map_arg_to_q = await build_subarguments_based_on_rule(
+                rule
+            )
+
+            if possible_subargs_r is None:
+                continue  # algum q não foi possível, logo não é possível usar a regra rule
+
+            args_p1_r = self.build_def_args_based_on_rule(
+                p1, possible_subargs_r, map_arg_to_q
+            )
+
+            args_p1.update(args_p1_r)
+
+        return args_p1
+
+    def build_def_args_based_on_rule(
+        self, p1, possible_subargs_r: list[set[Argument]], map_arg_to_q: dict
+    ):
+        """
+        TODO: tentar refatorar
+        """
+        args_r = set()
+
+        if not possible_subargs_r:
+            arg_p1 = Argument(p1).with_T_child()
+            arg_p1.supp_by_justified = True
+            return {arg_p1}
+
+        for subargs_combinations in itertools.product(*possible_subargs_r):
+            arg_p1 = Argument(p1)
+
+            for arg_q1 in subargs_combinations:
+                q = map_arg_to_q[arg_q1]
+                arg_q1: Argument = arg_q1
+                q1 = arg_q1.conclusion.label
+
+                similarity = self.system.sim_function(q, q1)
+
+                if q1.definer != self or similarity < 1:  ## necessita instanciação !!
+                    q_inst = ILLiteral(q1.definer, q1.literal, similarity)
+                    arg_q1.conclusion = q_inst  #!!! verificar se não terá problema
+
+                arg_p1.children.add(arg_q1)
+
+            if any(arg.rejected for arg in arg_p1.children):
+                arg_p1.rejected = True
+            elif all(arg.justified for arg in arg_p1.children):
+                arg_p1.justified = True
+
+            arg_p1.update_strength()
+
+            args_r.add(arg_p1)
+
+        return args_r
+
+    async def query_agents(
+        self,
+        agents: list[Agent],
+        q: LLiteral,
+        focus: QueryFocus,
+        hist_p1: list[LLiteral],
+    ):
+        args_q = list()
+
+        for agent in agents:
+            answer = await agent.query(q, focus, hist_p1)
+            args_q.append(answer.args_p)
+
+        return args_q
 
     async def find_local_answers(self, extended_kb, rlits):
         tv_p = False
@@ -92,7 +204,6 @@ class Agent:
                 continue
 
         return tv_p, args_p, args_not_p, has_strict_answer
-
 
     async def local_ans(self, p1: LLiteral, extended_kb: set[Rule]) -> dict:
         async def build_subarguments_based_on_rule(rule: Rule):
