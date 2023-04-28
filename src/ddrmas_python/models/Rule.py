@@ -20,8 +20,8 @@ class Rule:
     """Represents a generic rule"""
 
     head: LLiteral
-    type: RuleType
     body: list[LLiteral] = field(default_factory=list)
+    type: RuleType = RuleType.DEFEASIBLE
     
     def __hash__(self) -> int:
         ## TODO: fazer a representaçao str e repr

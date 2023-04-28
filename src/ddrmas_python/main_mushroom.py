@@ -1,10 +1,11 @@
 from __future__ import annotations
-
+import asyncio
 import pytest
 
 from ddrmas_python.models.Agent import Agent
 from ddrmas_python.models.LLiteral import LLiteral, Sign
 from ddrmas_python.models.Literal import Literal
+from ddrmas_python.models.QueryFocus import QueryFocus
 from ddrmas_python.models.Rule import Rule
 from ddrmas_python.models.System import System
 
@@ -28,7 +29,7 @@ def create_alice(system: System):
     not_ed = ed.negated()
     r_a3 = Rule(a_not_col, [not_ed])
 
-    alice.kb.union([r_a1, r_a2, r_a3])
+    alice.kb.update([r_a1, r_a2, r_a3])
 
     return alice
 
@@ -48,7 +49,7 @@ def create_bob(system: System):
     not_ed = ed.negated()
     r_b3 = Rule(b_not_col, [not_ed])
 
-    bob.kb.union([r_b1, r_b2, r_b3])
+    bob.kb.update([r_b1, r_b2, r_b3])
 
     return bob
 
@@ -60,7 +61,7 @@ def create_charles(system):
     avl =  LLiteral(Sign.SCHEMATIC, Literal(True, "avl", ["M"]))
     r_c1 = Rule(c_ed, [avl])
 
-    charles.kb.union([r_c1])
+    charles.kb.update([r_c1])
 
     return charles
 
@@ -73,7 +74,7 @@ def create_dennis(system):
     am =  LLiteral(Sign.SCHEMATIC, Literal(True, "am", ["M"]))
     r_d1 = Rule(d_not_ed, [am])
 
-    dennis.kb.union([r_d1])
+    dennis.kb.update([r_d1])
 
     return dennis
 
@@ -87,7 +88,7 @@ def create_eric(system):
     e_pbc =  LLiteral(eric, Literal(True, "pbc", ["M"]))
     r_e1 = Rule(e_not_ed, [e_hv, e_pbc])
 
-    eric.kb.union([r_e1])
+    eric.kb.update([r_e1])
 
     return eric
 
@@ -125,7 +126,20 @@ def set_trusts(alice:Agent, bob:Agent, charles:Agent, dennis:Agent, eric:Agent):
 
 
 
-def test_create_system():
+def create_focus_query_alpha(alice, a_col):
+    f_hv = LLiteral(Sign.FOCUS, Literal(True, "hv", ["M"]))  #verificar depois troca de "M" por "m1" e unificação
+    f_pbc = LLiteral(Sign.FOCUS, Literal(True, "pbc", ["M"]))
+
+    focus_rule1 = Rule(f_hv, [])
+    focus_rule2 = Rule(f_pbc, [])
+    focus_kb = {focus_rule1, focus_rule2}
+    
+    focus = QueryFocus("alpha", emitter_agent=alice, literal=a_col, kb=focus_kb)
+
+    return focus
+
+
+async def test_create_system():
 
 
     def similarity(p:LLiteral, q:LLiteral):
@@ -152,7 +166,14 @@ def test_create_system():
 
     set_trusts(alice, bob, charles, dennis, eric)
 
+    a_col = LLiteral(alice, Literal(True, "col", ["M"]))
 
-test_create_system()   
+    focus = create_focus_query_alpha(alice, a_col)
+
+    await alice.query(a_col, focus, [])
+
+
+
+asyncio.run(test_create_system())
 
     

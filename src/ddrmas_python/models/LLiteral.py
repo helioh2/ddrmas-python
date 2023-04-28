@@ -20,12 +20,14 @@ class LLiteral:
 
     definer: Agent|Sign
     literal: Literal
-
+    
     def negated(self) -> LLiteral:
         return LLiteral(self.definer, self.literal.negated())
-    
 
     def localize(self, agent) -> LLiteral:
         if self.definer == Sign.FOCUS:
             return LLiteral(agent, self.literal)
         return self
+    
+    def __hash__(self) -> int:
+        return hash(str(self.definer) + str(self.literal))

@@ -1,14 +1,16 @@
 from __future__ import annotations
+
+import asyncio
+
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
-from build.lib.ddrmas_python.models.Rule import RuleType
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
 from ddrmas_python.models.Argument import ArgType, Argument, TLabel
-from ddrmas_python.models.Answer import Answer
+from ddrmas_python.models.Answer import Answer, TruthValue
 from ddrmas_python.models.LLiteral import LLiteral
 from ddrmas_python.models.QueryFocus import QueryFocus
 
-from ddrmas_python.models.Rule import Rule
+from ddrmas_python.models.Rule import Rule, RuleType
 
 if TYPE_CHECKING:
     from ddrmas_python.models.System import System
@@ -24,7 +26,7 @@ class Agent:
     system: System
     kb: set[Rule] = field(default_factory=set)
     trust: dict[Agent, float] = field(default_factory=dict)
-    extended_kbs: dict[str, set[Rule]] = field(default_factory=set)
+    extended_kbs: dict[str, set[Rule]] = field(default_factory=dict)
 
     def __hash__(self) -> int:
         return hash(self.name)
@@ -32,7 +34,6 @@ class Agent:
     async def query(
         self, p: LLiteral, focus: QueryFocus, hist: list[LLiteral]
     ) -> Answer:
-        tv_p = False
         args_p = set()
         args_not_p = set()
 
@@ -43,25 +44,37 @@ class Agent:
 
         rlits = self.find_similar_lliterals(p, extended_kb)
 
+        print("CHEGUEI AQUI ANTES DO RETORNO SEM RLITS")
+
         if not rlits:
-            return Answer(p, focus, tv_p)  # tv_p = False
+            return Answer(p, focus, TruthValue.FALSE)
 
         args_p = self.create_fallacious_arguments(hist, rlits)
 
-        rlits_negated = [p1.negated() for p1 in rlits]
+        (
+            tv_p_strict,
+            args_p_strict,
+            args_not_p_strict,
+            has_strict_answer,
+        ) = await self.find_local_answers(extended_kb, rlits)
 
-        has_strict_answer = {p1: False for p1 in rlits + rlits_negated}
+        tv_p = tv_p_strict
 
-        tv_p_strict = await self.find_local_answers(
-            extended_kb, tv_p, args_p, args_not_p, rlits, has_strict_answer
-        )
-        
+        print("CHEGUEI AQUI (APÓS STRICT FINDING)")
+        # for p1 in rlits:
+        #     args_p1 = self.find_defeasible_args(p1, extended_kb, focus, hist)
+        #     args_not_p1 = self.find_defeasible_args(p1.negated(), extended_kb, focus, hist)
 
         # TODO continuaçao
 
-    async def find_local_answers(
-        self, extended_kb, tv_p, args_p, args_not_p, rlits, has_strict_answer
-    ):
+
+    async def find_local_answers(self, extended_kb, rlits):
+        tv_p = False
+        args_p = set()
+        args_not_p = set()
+        rlits_negated = [p1.negated() for p1 in rlits]
+        has_strict_answer = {p1: False for p1 in rlits + rlits_negated}
+
         for p1 in rlits:
             local_answer_p1 = await self.local_ans(p1, extended_kb)
             if local_answer_p1["tv"]:
@@ -78,14 +91,14 @@ class Agent:
                 has_strict_answer[p1.negated()] = True
                 continue
 
-        return tv_p
+        return tv_p, args_p, args_not_p, has_strict_answer
 
-    async def local_ans(p1: LLiteral, extended_kb: set[Rule]) -> dict:
 
+    async def local_ans(self, p1: LLiteral, extended_kb: set[Rule]) -> dict:
         async def build_subarguments_based_on_rule(rule: Rule):
             subarguments = set()
             for q in rule.body:
-                ans = await local_ans(q, extended_kb)
+                ans = await self.local_ans(q, extended_kb)
                 if not ans["tv"]:
                     return None  # se um dos membros do corpo não puder ser ativado, não é possível ativar a regra
                 subarguments.add(ans["arg"])
@@ -114,8 +127,8 @@ class Agent:
                 "tv": True,
                 "arg": arg,
             }  # a primeira regra a partir da qual um argumento pode ser gerado é usado.
-        
-        #else
+
+        # else
         return {"tv": False, "arg": None}
 
     def create_fallacious_arguments(self, hist: list[LLiteral], rlits: list[LLiteral]):

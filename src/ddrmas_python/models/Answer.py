@@ -19,5 +19,5 @@ class Answer:
     p: LLiteral
     query_focus: QueryFocus
     tv_p: TruthValue
-    args_p = set[Argument] = field(default_factory=set)
-    args_not_p = set[Argument] = field(default_factory=set)
+    args_p: set[Argument] = field(default_factory=set)
+    args_not_p: set[Argument] = field(default_factory=set)
