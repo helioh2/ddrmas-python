@@ -10,6 +10,9 @@ from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
 class TLabel(Enum):
     T = 1
 
+    def __str__(self) -> str:
+        return "T"
+
 class ArgType(Enum):
     STRICT = 1
     DEFEASIBLE = 2
@@ -51,5 +54,33 @@ class Argument:
 
     def __hash__(self) -> int:
         return hash(self.id)
+    
+    @property
+    def definer(self):
+        return self.conclusion.label.definer
 
+    @property
+    def name(self):
+        return str(self.definer)[0].upper() + "_" + str(self.id)
 
+    def __str__(self) -> str:
+        str_ = self.name
+        str_ += ":\n"
+        str_ += "\t ("
+
+        str_ += str(self.conclusion) 
+        str_ +=  " <- ["
+
+        for child in self.children:
+            if isinstance(child, Argument):
+                str_ += str(child.name) + ", "
+            else:
+                str_ += str(child) + ", "
+
+        str_ += "]"
+        str_ += ")\n" 
+
+        for arg in self.children:
+            str_ += str(arg)
+
+        return str_ 

@@ -14,6 +14,9 @@ class Sign(enum.Enum):
     SCHEMATIC = 1
     FOCUS = 2
 
+    def __str__(self) -> str:
+        return "@" if self.value == 1 else "F"
+
 @dataclass
 class LLiteral:
     """ Represents a generic l-literal"""
@@ -31,3 +34,6 @@ class LLiteral:
     
     def __hash__(self) -> int:
         return hash(str(self.definer) + str(self.literal))
+    
+    def __str__(self) -> str:
+        return f"<{str(self.definer)}, {self.literal}>" 

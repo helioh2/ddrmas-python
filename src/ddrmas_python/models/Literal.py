@@ -16,3 +16,7 @@ class Literal:
     
     def __eq__(self, __value: object) -> bool:
         return self.positive == __value.positive and self.pred == __value.pred
+    
+    def __str__(self) -> str:
+        sign = "" if self.positive else "~"
+        return f"{sign}{self.pred}{self.terms}"

@@ -38,6 +38,7 @@ class Agent:
     ) -> Answer:
         args_p = set()
         args_not_p = set()
+        tv_p = TruthValue.FALSE
 
         if focus.name not in self.extended_kbs.keys():
             extended_kb = self.create_new_extended_kb(focus)
@@ -53,25 +54,125 @@ class Agent:
 
         args_p = self.create_fallacious_arguments(hist, rlits)
 
-        (
-            tv_p_strict,
-            args_p_strict,
-            args_not_p_strict,
-            has_strict_answer,
-        ) = await self.find_local_answers(extended_kb, rlits)
-
-        tv_p = tv_p_strict
-
-        print("CHEGUEI AQUI (APÓS STRICT FINDING)")
         for p1 in rlits:
+
+            (
+                tv_p_strict,
+                args_p1_strict,
+                args_not_p1_strict,
+                has_strict_answer_p1,
+            ) = await self.find_local_answers(extended_kb, p1)
+
+            print("CHEGUEI AQUI (APÓS STRICT FINDING)")
             args_p1 = await self.find_defeasible_args(p1, extended_kb, focus, hist)
             args_not_p1 = await self.find_defeasible_args(
                 p1.negated(), extended_kb, focus, hist
             )
+            
+            if has_strict_answer_p1 and not tv_p_strict:
+                tv_p = TruthValue.FALSE
+                for arg in args_p1:
+                    arg.rejected = True
 
-        # TODO continuaçao
+            elif has_strict_answer_p1 and tv_p_strict:
+                tv_p = TruthValue.TRUE
+                for arg in args_not_p1:
+                    arg.rejected = True
+
+            # else:
+            #     tv_p1 = self.compare_def_args(args_p1, args_not_p1)
+                
+            #     if tv_p1 == TruthValue.TRUE:
+            #         tv_p = TruthValue.TRUE
+            #     elif tv_p1 == TruthValue.UNDECIDED and tv_p != TruthValue.TRUE:
+            #         tv_p = TruthValue.UNDECIDED
+            
+            # args_p = args_p.union(args_p1)
+            # args_not_p = args_not_p.union(args_not_p1)
+
 
         return Answer(p, focus, tv_p, args_p1, args_not_p1)
+    
+    def create_new_extended_kb(self, focus):
+        localized_focus_kb = set(rule.localize(self) for rule in focus.kb)
+        extended_kb = self.kb.union(localized_focus_kb)
+        self.extended_kbs[focus.name] = extended_kb
+        return extended_kb
+    
+    def find_similar_lliterals(self, p: LLiteral, extended_kb: set[Rule]):
+        rlits = []
+        for rule in extended_kb:
+            if self.system.similar_enough(rule.head, p):
+                rlits.append(rule.head)
+
+        return rlits
+
+    def create_fallacious_arguments(self, hist: list[LLiteral], rlits: list[LLiteral]):
+        args_p = []
+        for i, p1 in enumerate(rlits):
+            if not {p1, p1.negated()}.isdisjoint(hist):
+                fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True))
+                args_p.append(fall_arg_p1)
+                rlits.pop(i)
+
+        return args_p
+
+    async def find_local_answers(self, extended_kb, p1):
+        tv_p = False
+        args_p = set()
+        args_not_p = set()
+        has_strict_answer = False
+
+        local_answer_p1 = await self.local_ans(p1, extended_kb)
+        if local_answer_p1["tv"]:
+            args_p.add(local_answer_p1["arg"])
+            tv_p = True
+            has_strict_answer = True
+            return tv_p, args_p, args_not_p, has_strict_answer
+
+        local_answer_not_p1 = await self.local_ans(p1.negated(), extended_kb)
+        if local_answer_not_p1["tv"]:
+            args_not_p.add(local_answer_not_p1["arg"])
+            has_strict_answer = True
+
+        return tv_p, args_p, args_not_p, has_strict_answer
+
+    async def local_ans(self, p1: LLiteral, extended_kb: set[Rule]) -> dict:
+        async def build_subarguments_based_on_rule(rule: Rule):
+            subarguments = set()
+            for q in rule.body:
+                ans = await self.local_ans(q, extended_kb)
+                if not ans["tv"]:
+                    return None  # se um dos membros do corpo não puder ser ativado, não é possível ativar a regra
+                subarguments.add(ans["arg"])
+
+            return subarguments
+
+        strict_rules_for_p1 = {
+            rule
+            for rule in extended_kb
+            if rule.head == p1 and rule.type == RuleType.STRICT
+        }
+
+        for rule in strict_rules_for_p1:
+            arg = Argument.build(ArgNodeLabel(p1)).being_strict()
+            if not rule.body:
+                arg = arg.with_T_child()
+            else:
+                subarguments = await build_subarguments_based_on_rule(rule)
+                if (
+                    subarguments is None
+                ):  # quando não é possível construir os subargumentos com base na regra
+                    continue
+                arg.children.update(subarguments)
+
+            return {
+                "tv": True,
+                "arg": arg,
+            }  # a primeira regra a partir da qual um argumento pode ser gerado é usado.
+
+        # else
+        return {"tv": False, "arg": None}
 
     async def find_defeasible_args(
         self,
@@ -150,7 +251,7 @@ class Agent:
 
                 if q1.definer != self or similarity < 1:  ## necessita instanciação !!
                     q_inst = ILLiteral(q1.definer, q1.literal, similarity)
-                    arg_q1.conclusion = q_inst  #!!! verificar se não terá problema
+                    arg_q1.conclusion.label = q_inst  #!!! verificar se não terá problema
 
                 arg_p1.children.add(arg_q1)
 
@@ -180,88 +281,6 @@ class Agent:
 
         return args_q
 
-    async def find_local_answers(self, extended_kb, rlits):
-        tv_p = False
-        args_p = set()
-        args_not_p = set()
-        rlits_negated = [p1.negated() for p1 in rlits]
-        has_strict_answer = {p1: False for p1 in rlits + rlits_negated}
-
-        for p1 in rlits:
-            local_answer_p1 = await self.local_ans(p1, extended_kb)
-            if local_answer_p1["tv"]:
-                args_p.add(local_answer_p1["arg"])
-                tv_p = True
-                has_strict_answer[p1] = True
-                continue
-
-            local_answer_not_p1 = await self.local_ans(p1.negated(), extended_kb)
-            if local_answer_not_p1["tv"]:
-                args_not_p.add(local_answer_not_p1["arg"])
-                # Se uma resposta estrita True já tiver sido encontrada, ela será usada no final
-                tv_p = tv_p or False
-                has_strict_answer[p1.negated()] = True
-                continue
-
-        return tv_p, args_p, args_not_p, has_strict_answer
-
-    async def local_ans(self, p1: LLiteral, extended_kb: set[Rule]) -> dict:
-        async def build_subarguments_based_on_rule(rule: Rule):
-            subarguments = set()
-            for q in rule.body:
-                ans = await self.local_ans(q, extended_kb)
-                if not ans["tv"]:
-                    return None  # se um dos membros do corpo não puder ser ativado, não é possível ativar a regra
-                subarguments.add(ans["arg"])
-
-            return subarguments
-
-        strict_rules_for_p1 = {
-            rule
-            for rule in extended_kb
-            if rule.head == p1 and rule.type == RuleType.STRICT
-        }
-
-        for rule in strict_rules_for_p1:
-            arg = Argument.build(ArgNodeLabel(p1)).being_strict()
-            if not rule.body:
-                arg = arg.with_T_child()
-            else:
-                subarguments = await build_subarguments_based_on_rule(rule)
-                if (
-                    subarguments is None
-                ):  # quando não é possível construir os subargumentos com base na regra
-                    continue
-                arg.children.update(subarguments)
-
-            return {
-                "tv": True,
-                "arg": arg,
-            }  # a primeira regra a partir da qual um argumento pode ser gerado é usado.
-
-        # else
-        return {"tv": False, "arg": None}
-
-    def create_fallacious_arguments(self, hist: list[LLiteral], rlits: list[LLiteral]):
-        args_p = []
-        for i, p1 in enumerate(rlits):
-            if not {p1, p1.negated()}.isdisjoint(hist):
-                fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True))
-                args_p.append(fall_arg_p1)
-                rlits.pop(i)
-
-        return args_p
-
-    def find_similar_lliterals(self, p: LLiteral, extended_kb: set[Rule]):
-        rlits = []
-        for rule in extended_kb:
-            if self.system.similar_enough(rule.head, p):
-                rlits.append(rule.head)
-
-        return rlits
-
-    def create_new_extended_kb(self, focus):
-        localized_focus_kb = set(rule.localize(self) for rule in focus.kb)
-        extended_kb = self.kb.union(localized_focus_kb)
-        self.extended_kbs[focus.name] = extended_kb
-        return extended_kb
+   
+    def __str__(self) -> str:
+        return self.name[0].upper()

@@ -172,9 +172,17 @@ async def test_create_system():
 
     ans = await alice.query(a_col, focus, [])
     from pprint import pprint
-    pprint(ans)
+    # for arg in ans.args_p:
+    #     print(arg)
+
+    # for arg in ans.args_not_p:
+    #     print(arg)
+
+    # pprint(ans.args_not_p)
 
 
+    print(ans.args_p.pop())
+    print(ans.args_not_p.pop())
 
 asyncio.run(test_create_system())
 

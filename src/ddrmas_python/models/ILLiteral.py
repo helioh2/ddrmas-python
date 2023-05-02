@@ -10,3 +10,6 @@ from ddrmas_python.models.LLiteral import LLiteral
 class ILLiteral(LLiteral):
 
     similarity: float
+
+    def __str__(self) -> str:
+        return f"<{str(self.definer)}, {self.literal}, {self.similarity}>" 

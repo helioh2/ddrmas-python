@@ -11,3 +11,8 @@ class ArgNodeLabel:
 
     label: LLiteral
     fallacious: bool = False
+
+    def __str__(self) -> str:
+        if self.fallacious:
+            return str(self.label) + "!"
+        return str(self.label)
