@@ -170,7 +170,9 @@ async def test_create_system():
 
     focus = create_focus_query_alpha(alice, a_col)
 
-    await alice.query(a_col, focus, [])
+    ans = await alice.query(a_col, focus, [])
+    from pprint import pprint
+    pprint(ans)
 
 
 

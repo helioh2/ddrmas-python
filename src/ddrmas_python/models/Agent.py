@@ -94,13 +94,13 @@ class Agent:
                 elif isinstance(q.definer, Agent):
                     args_q = await self.query_agents([q.definer], q, focus, hist_p1)
                 if not args_q:
-                    return None  # não foi possível construir args para todos os membros do corpo
+                    return None, None  # não foi possível construir args para todos os membros do corpo
 
                 # else
                 for arg in args_q:
                     map_arg_to_q[arg] = q
 
-                possible_subargs_r.add(args_q)
+                possible_subargs_r.append(args_q)
 
             # else
             return possible_subargs_r, map_arg_to_q
@@ -134,12 +134,12 @@ class Agent:
         args_r = set()
 
         if not possible_subargs_r:
-            arg_p1 = Argument(p1).with_T_child()
+            arg_p1 = Argument(ArgNodeLabel(p1)).with_T_child()
             arg_p1.supp_by_justified = True
             return {arg_p1}
 
         for subargs_combinations in itertools.product(*possible_subargs_r):
-            arg_p1 = Argument(p1)
+            arg_p1 = Argument(ArgNodeLabel(p1))
 
             for arg_q1 in subargs_combinations:
                 q = map_arg_to_q[arg_q1]
@@ -176,7 +176,7 @@ class Agent:
 
         for agent in agents:
             answer = await agent.query(q, focus, hist_p1)
-            args_q.append(answer.args_p)
+            args_q += answer.args_p
 
         return args_q
 
