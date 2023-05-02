@@ -23,7 +23,7 @@ class Argument:
 
     conclusion: ArgNodeLabel
     id: UUID = field(default_factory=uuid4)
-    children: set[Argument|TLabel] = field(default_factory=set)
+    children: set[Argument] = field(default_factory=set)
     type: ArgType = ArgType.DEFEASIBLE
     supp_by_justified: bool = False
     justified: bool = False
@@ -40,20 +40,43 @@ class Argument:
         self.type = ArgType.STRICT
         return self
 
-    def with_T_child(self) -> Argument:
-        self.children.add(TLabel.T)
-        return self
-
     def is_fallacious(self) -> bool:
         return self.conclusion.fallacious
     
+    def direct_external_subargs(self) -> set[Argument]:
 
+        dex_subargs = []
+        for subarg in self.children:
+            if subarg.definer == self.definer:
+                dex_subargs += subarg.direct_external_subargs()
+            else:
+                dex_subargs.append(subarg)
+        
+        return dex_subargs
+                
     def update_strength(self):
-        pass
+        
+        dex_subargs = self.direct_external_subargs()
 
+        if not dex_subargs:
+            self.strength = 1
+            return self.strength
+        
+        else:
+            sum_ = 0
+            for subarg in dex_subargs:
+                ilstrength = subarg.conclusion.label.strength(self.definer)
+                sum_ += ilstrength * subarg.update_strength()
 
-    def __hash__(self) -> int:
-        return hash(self.id)
+            self.strength = sum_ / len(dex_subargs)
+
+            return self.strength
+
+    def attacks(self, arg: Argument) -> bool:
+        return self.conclusion.label.negated() == arg.conclusion.label
+
+    def defeats(self, arg: Argument) -> bool:
+        return self.attacks(arg) and self.strength >= arg.strength
     
     @property
     def definer(self):
@@ -72,10 +95,10 @@ class Argument:
         str_ +=  " <- ["
 
         for child in self.children:
-            if isinstance(child, Argument):
-                str_ += str(child.name) + ", "
-            else:
-                str_ += str(child) + ", "
+            str_ += str(child.name) + ", "
+        
+        if not self.children:
+            str_ += "T"
 
         str_ += "]"
         str_ += ")\n" 
@@ -84,3 +107,6 @@ class Argument:
             str_ += str(arg)
 
         return str_ 
+
+    def __hash__(self) -> int:
+        return hash(self.id)

@@ -6,7 +6,7 @@ import itertools
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
-from ddrmas_python.models.Argument import ArgType, Argument, TLabel
+from ddrmas_python.models.Argument import ArgType, Argument
 from ddrmas_python.models.Answer import Answer, TruthValue
 from ddrmas_python.models.ILLiteral import ILLiteral
 from ddrmas_python.models.LLiteral import LLiteral, Sign
@@ -63,12 +63,15 @@ class Agent:
                 has_strict_answer_p1,
             ) = await self.find_local_answers(extended_kb, p1)
 
+            args_p.update(args_p1_strict)
+            args_not_p.update(args_not_p1_strict)
+
             print("CHEGUEI AQUI (APÓS STRICT FINDING)")
             args_p1 = await self.find_defeasible_args(p1, extended_kb, focus, hist)
             args_not_p1 = await self.find_defeasible_args(
                 p1.negated(), extended_kb, focus, hist
             )
-            
+
             if has_strict_answer_p1 and not tv_p_strict:
                 tv_p = TruthValue.FALSE
                 for arg in args_p1:
@@ -79,26 +82,25 @@ class Agent:
                 for arg in args_not_p1:
                     arg.rejected = True
 
-            # else:
-            #     tv_p1 = self.compare_def_args(args_p1, args_not_p1)
-                
-            #     if tv_p1 == TruthValue.TRUE:
-            #         tv_p = TruthValue.TRUE
-            #     elif tv_p1 == TruthValue.UNDECIDED and tv_p != TruthValue.TRUE:
-            #         tv_p = TruthValue.UNDECIDED
-            
-            # args_p = args_p.union(args_p1)
-            # args_not_p = args_not_p.union(args_not_p1)
+            else:
+                tv_p1 = self.compare_def_args(args_p1, args_not_p1)
 
+                if tv_p1 == TruthValue.TRUE:
+                    tv_p = TruthValue.TRUE
+                elif tv_p1 == TruthValue.UNDECIDED and tv_p != TruthValue.TRUE:
+                    tv_p = TruthValue.UNDECIDED
+
+            args_p = args_p.union(args_p1)
+            args_not_p = args_not_p.union(args_not_p1)
 
         return Answer(p, focus, tv_p, args_p1, args_not_p1)
-    
+
     def create_new_extended_kb(self, focus):
         localized_focus_kb = set(rule.localize(self) for rule in focus.kb)
         extended_kb = self.kb.union(localized_focus_kb)
         self.extended_kbs[focus.name] = extended_kb
         return extended_kb
-    
+
     def find_similar_lliterals(self, p: LLiteral, extended_kb: set[Rule]):
         rlits = []
         for rule in extended_kb:
@@ -108,11 +110,11 @@ class Agent:
         return rlits
 
     def create_fallacious_arguments(self, hist: list[LLiteral], rlits: list[LLiteral]):
-        args_p = []
+        args_p = set()
         for i, p1 in enumerate(rlits):
             if not {p1, p1.negated()}.isdisjoint(hist):
                 fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True))
-                args_p.append(fall_arg_p1)
+                args_p.add(fall_arg_p1)
                 rlits.pop(i)
 
         return args_p
@@ -156,15 +158,13 @@ class Agent:
 
         for rule in strict_rules_for_p1:
             arg = Argument.build(ArgNodeLabel(p1)).being_strict()
-            if not rule.body:
-                arg = arg.with_T_child()
-            else:
-                subarguments = await build_subarguments_based_on_rule(rule)
-                if (
-                    subarguments is None
-                ):  # quando não é possível construir os subargumentos com base na regra
-                    continue
-                arg.children.update(subarguments)
+
+            subarguments = await build_subarguments_based_on_rule(rule)
+            if subarguments is None:
+                # quando não é possível construir os subargumentos com base na regra
+                continue
+
+            arg.children.update(subarguments)
 
             return {
                 "tv": True,
@@ -195,7 +195,10 @@ class Agent:
                 elif isinstance(q.definer, Agent):
                     args_q = await self.query_agents([q.definer], q, focus, hist_p1)
                 if not args_q:
-                    return None, None  # não foi possível construir args para todos os membros do corpo
+                    return (
+                        None,
+                        None,
+                    )  # não foi possível construir args para todos os membros do corpo
 
                 # else
                 for arg in args_q:
@@ -235,7 +238,7 @@ class Agent:
         args_r = set()
 
         if not possible_subargs_r:
-            arg_p1 = Argument(ArgNodeLabel(p1)).with_T_child()
+            arg_p1 = Argument(ArgNodeLabel(p1))  # "folha"
             arg_p1.supp_by_justified = True
             return {arg_p1}
 
@@ -251,7 +254,9 @@ class Agent:
 
                 if q1.definer != self or similarity < 1:  ## necessita instanciação !!
                     q_inst = ILLiteral(q1.definer, q1.literal, similarity)
-                    arg_q1.conclusion.label = q_inst  #!!! verificar se não terá problema
+                    arg_q1.conclusion.label = (
+                        q_inst  #!!! verificar se não terá problema
+                    )
 
                 arg_p1.children.add(arg_q1)
 
@@ -281,6 +286,32 @@ class Agent:
 
         return args_q
 
-   
+    def compare_def_args(self, args_p1: set[Argument], args_not_p1: set[Argument]) -> TruthValue:
+        tv_p1 = TruthValue.UNDECIDED
+
+        for arg_p1 in args_p1:
+
+            all_not_rejected_and_do_not_defeat = all(
+                not a_n_p1.rejected and not a_n_p1.defeats(arg_p1)
+                for a_n_p1 in args_not_p1
+            )
+
+            if arg_p1.supp_by_justified and all_not_rejected_and_do_not_defeat:
+                arg_p1.justified = True
+                tv_p1 = TruthValue.TRUE
+
+            elif not any(
+                a_n_p1.supp_by_justified and a_n_p1.defeats(arg_p1)
+                for a_n_p1 in args_not_p1
+            ):
+                arg_p1.rejected = True
+
+        if tv_p1 != TruthValue.TRUE and (
+            not args_p1 or all(arg_p1.rejected for arg_p1 in args_p1)
+        ):
+            tv_p1 = TruthValue.FALSE
+
+        return tv_p1
+
     def __str__(self) -> str:
         return self.name[0].upper()
