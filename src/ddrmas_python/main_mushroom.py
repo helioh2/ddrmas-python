@@ -184,6 +184,10 @@ async def test_create_system():
     print(ans.args_p.pop())
     print(ans.args_not_p.pop())
 
+    # TODO: FAZER EXEMPLOS EM QUE OCORRE UNDERCUT
+    # TODO: FAZER EXEMPLOS EM QUE OCORRE FALACIAS
+    # TODO: IMPLEMENTAR CACHING
+
 asyncio.run(test_create_system())
 
     

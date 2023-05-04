@@ -55,7 +55,6 @@ class Agent:
         args_p = self.create_fallacious_arguments(hist, rlits)
 
         for p1 in rlits:
-
             (
                 tv_p_strict,
                 args_p1_strict,
@@ -263,7 +262,7 @@ class Agent:
             if any(arg.rejected for arg in arg_p1.children):
                 arg_p1.rejected = True
             elif all(arg.justified for arg in arg_p1.children):
-                arg_p1.justified = True
+                arg_p1.supp_by_justified = True
 
             arg_p1.update_strength()
 
@@ -286,29 +285,53 @@ class Agent:
 
         return args_q
 
-    def compare_def_args(self, args_p1: set[Argument], args_not_p1: set[Argument]) -> TruthValue:
+    def compare_def_args(
+        self, args_p1: set[Argument], args_not_p1: set[Argument]
+    ) -> TruthValue:
+        
         tv_p1 = TruthValue.UNDECIDED
 
-        for arg_p1 in args_p1:
 
-            all_not_rejected_and_do_not_defeat = all(
-                not a_n_p1.rejected and not a_n_p1.defeats(arg_p1)
-                for a_n_p1 in args_not_p1
+        nu_args_for_p1 = {
+            a_p1 for a_p1 in args_p1 if not a_p1.rejected
+        }  ## args para p1 não rejeitados por undercut
+
+        nu_args_for_not_p1 = {
+            a_n_p1 for a_n_p1 in args_not_p1 if not a_n_p1.rejected
+        }  ## args para not p1 não rejeitados por undercut
+
+
+        for arg in nu_args_for_p1.union(nu_args_for_not_p1):
+
+            opposite_args = nu_args_for_not_p1 if (arg in nu_args_for_p1) else nu_args_for_p1
+            # custo de verificação constante pelo uso de set
+            
+            any_nu_for_opposite_defeats = any(
+                a.defeats(arg) for a in opposite_args
             )
 
-            if arg_p1.supp_by_justified and all_not_rejected_and_do_not_defeat:
-                arg_p1.justified = True
-                tv_p1 = TruthValue.TRUE
+            ## a ideia é verificar se todos os argumentos opostos que não foram rejeitados
+            ## não derrotam arg. Se um argumento derrota, mas é rejeitado, então
+            ## foi undercut.
 
-            elif not any(
-                a_n_p1.supp_by_justified and a_n_p1.defeats(arg_p1)
-                for a_n_p1 in args_not_p1
-            ):
-                arg_p1.rejected = True
+            if not any_nu_for_opposite_defeats:
+
+                if arg.supp_by_justified:
+                    arg.justified = True
+
+                    # basta um argumento justificado para que resposta seja true
+                    if arg in nu_args_for_p1:
+                        tv_p1 = TruthValue.TRUE
+
+            else:
+                # só é rejeitado se alguém derrota, mesmo que não seja SuppJ (i.e. falaciosos)
+                arg.rejected = True
+
 
         if tv_p1 != TruthValue.TRUE and (
             not args_p1 or all(arg_p1.rejected for arg_p1 in args_p1)
         ):
+            # não há argumentos em args_p1 ou todos foram rejeitados
             tv_p1 = TruthValue.FALSE
 
         return tv_p1
