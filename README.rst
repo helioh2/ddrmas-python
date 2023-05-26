@@ -34,10 +34,10 @@ ddrmas-python
 =============
 
 
-    Add a short description here!
+    A framework for argument-based, distributed, dynamic and contexual reasoning with defeasible knowledge. 
 
+This is an implementation of the model presented in Helio Henrique Monte Alto's PhD thesis and derived papers.
 
-A longer description of your project goes here...
 
 
 .. _pyscaffold-notes:
