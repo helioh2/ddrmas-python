@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 ddrmas-python = {editable = true, path = "."}
+pyyaml = "*"
 
 [dev-packages]
 tox = "*"

@@ -11,24 +11,32 @@ from ddrmas_python.models.LLiteral import LLiteral
 
 
 class RuleType(enum.Enum):
-    STRICT = 1
-    DEFEASIBLE = 2
+    STRICT = "<-"
+    DEFEASIBLE = "<="
 
 
 @dataclass
 class Rule:
     """Represents a generic rule"""
-
+    
+    name: str
     head: LLiteral
     body: list[LLiteral] = field(default_factory=list)
     type: RuleType = RuleType.DEFEASIBLE
     
-    def __hash__(self) -> int:
-        ## TODO: fazer a representaçao str e repr
-        return hash("".join([str(self.head)]+[str(b) for b in self.body]))
-
+    
     def localize(self, agent: Agent) -> Rule:
         localized_head = self.head.localize(agent)
         localized_body = [b.localize(agent) for b in self.body]
-        return Rule(localized_head, localized_body)
+        localized_name = self.name + "_" + agent.name
+        return Rule(localized_name, localized_head, localized_body)
     
+    def __str__(self) -> str:
+        str_ = self.name + ": "
+        str_ += str(self.head)
+        str_ += " "+ self.type.value+" "
+        str_ += ", ".join(str(bm) for bm in self.body) 
+        return str_
+    
+    def __hash__(self) -> int:
+        return hash(self.name)

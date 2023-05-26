@@ -36,4 +36,4 @@ class LLiteral:
         return hash(str(self.definer) + str(self.literal))
     
     def __str__(self) -> str:
-        return f"<{str(self.definer)}, {self.literal}>" 
+        return f"({str(self.definer)}, {self.literal})" 

@@ -1,0 +1,48 @@
+a:
+    rules:
+        r_a1: (a, ¬ed(M)) <= (a, dc(M))
+        r_a2: (a, col(M)) <= (@, ed(M))
+        r_a3: (a, ¬col(M)) <= (@, ¬ed(M))
+    trust:
+        b: 0.4
+        c: 0.6
+        d: 0.2
+        e: 0.8
+
+b:
+    rules:
+        r_b1: (b, ¬ed(M)) <= (b, hv(M))
+        r_b2: (b, col(M)) <= (@, ed(M))
+        r_b3: (b, ¬col(M)) <= (@, ¬ed(M))
+    trust:
+        a: 0.5
+        c: 0.5
+        d: 0.5
+        e: 0.5
+
+c:
+    rules:
+        r_c1: (c, ed(M)) <= (@, avl(M))
+    trust:
+        a: 1
+        b: 0.4
+        d: 0.4
+        e: 1
+
+d:
+    rules:
+        r_d1: (d, ¬ed(M)) <= (@, am(M))
+    trust:
+        a: 0.4
+        b: 0.4
+        c: 1
+        e: 1
+
+e:
+    rules:
+        r_e1: (e, spa(M)) <= (e, hv(M)); (e, pbc(M))
+    trust:
+        a: 0.4
+        b: 0.6
+        c: 0.2
+        d: 0.8
