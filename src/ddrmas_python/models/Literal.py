@@ -20,3 +20,6 @@ class Literal:
     def __str__(self) -> str:
         sign = "" if self.positive else "~"
         return f"{sign}{self.pred}{self.terms}"
+    
+    def __hash__(self) -> int:
+        return hash(str(self))

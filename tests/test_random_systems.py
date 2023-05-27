@@ -58,7 +58,8 @@ class RandomDDRMASTester:
     literalsNumber: int
     rulesNumber: int
     sslPercentage: float
-    cyclePercentage: float
+    cyclePercentage: float   ## TODO
+    similarityPercentage: float
     similarity_function = lambda a, b: 1 if a==b or random.random() <= 0.1 else 0
     system: System = None
     focus_name_gen = focus_name_generator()
@@ -67,7 +68,8 @@ class RandomDDRMASTester:
 
     def create_system(self) -> System:
 
-        self.system = System(sim_function=self.similarity_function, sim_threshold=1)
+        self.system = System(sim_threshold=1)
+
         agents = []
         self.literals = []
         rules = []
@@ -90,6 +92,15 @@ class RandomDDRMASTester:
         for _ in range(self.literalsNumber):
             self.literals.append(Literal(positive=True, pred=next(literal_name_gen), terms=["M"]))
 
+
+        similarity_between_literals = {literal: {} for literal in self.literals}
+        for literal1, literal2 in product(self.literals, self.literals):
+            sim = 1 if random.random() <= self.similarityPercentage else 0
+            similarity_between_literals[literal1][literal2] = sim
+            similarity_between_literals[literal2][literal1] = sim
+
+        self.system.sim_function = lambda a,b: similarity_between_literals[a][b]
+
         for _ in range(self.rulesNumber):
             definer_agent = random.choice(agents)
             head_literal = random.choice(self.literals)
@@ -104,7 +115,7 @@ class RandomDDRMASTester:
                 literal = random.choice(self.literals)
                 while literal == head_literal:
                     literal = random.choice(self.literals)
-                literal.positive = True if random.randrange(0,2)==0 else False
+                literal.positive = random.randrange(0,2) == 0
 
                 is_ssl = random.random() <= self.sslPercentage
                 if is_ssl:
@@ -153,12 +164,28 @@ class RandomDDRMASTester:
         ans = await emitter_agent.query(lliteral, focus, [])
 
         print(ans)
-
-
+        
 
         
 ##TESTE:
-tester = RandomDDRMASTester(20, 100, 500, 0.8, 0)
+# tester = RandomDDRMASTester(
+#     agentsNumber=5, 
+#     literalsNumber=10, 
+#     rulesNumber=50, 
+#     sslPercentage=0.8, 
+#     cyclePercentage=0,
+#     similarityPercentage=0.1
+# )
+
+tester = RandomDDRMASTester(
+    agentsNumber=20, 
+    literalsNumber=100, 
+    rulesNumber=300, 
+    sslPercentage=0.8, 
+    cyclePercentage=0,
+    similarityPercentage=0.1
+)
+
 print_system(tester.create_system())
         
 print("\n\n\n--------query\n\n")

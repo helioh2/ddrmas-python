@@ -92,7 +92,7 @@ class Agent:
             args_p = args_p.union(args_p1)
             args_not_p = args_not_p.union(args_not_p1)
 
-        return Answer(p, focus, tv_p, args_p1, args_not_p1)
+        return Answer(p, focus, tv_p, args_p, args_not_p)
 
     def create_new_extended_kb(self, focus):
         localized_focus_kb = set(rule.localize(self) for rule in focus.kb)
