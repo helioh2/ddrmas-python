@@ -6,6 +6,8 @@ name = "pypi"
 [packages]
 ddrmas-python = {editable = true, path = "."}
 pyyaml = "*"
+py-lru-cache = "*"
+promise = "*"
 
 [dev-packages]
 tox = "*"

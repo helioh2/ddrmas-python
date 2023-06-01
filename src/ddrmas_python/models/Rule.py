@@ -32,7 +32,8 @@ class Rule:
         return Rule(localized_name, localized_head, localized_body)
     
     def __str__(self) -> str:
-        str_ = self.name + ": "
+        str_ = ""
+        # str_ += self.name + ": "
         str_ += str(self.head)
         str_ += " "+ self.type.value+" "
         str_ += ", ".join(str(bm) for bm in self.body) 

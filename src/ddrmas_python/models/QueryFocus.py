@@ -18,3 +18,16 @@ class QueryFocus:
     emitter_agent: Agent
     kb: set[Rule] = field(default_factory=set)
 
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    def __str__(self) -> str:
+        res = self.name + ": " + str(self.literal) + " by " + str(self.emitter_agent)
+        res += " with focus rules: \n"
+        for rule in self.kb:
+            res += str(rule) + "\n"
+
+        return res
+    
+    def __repr__(self) -> str:
+        return str(self)

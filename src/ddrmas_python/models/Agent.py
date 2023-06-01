@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import itertools
+import traceback
 
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
+
+from promise import Promise
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
 from ddrmas_python.models.Argument import ArgType, Argument
 from ddrmas_python.models.Answer import Answer, TruthValue
@@ -13,6 +17,11 @@ from ddrmas_python.models.LLiteral import LLiteral, Sign
 from ddrmas_python.models.QueryFocus import QueryFocus
 
 from ddrmas_python.models.Rule import Rule, RuleType
+
+# from ddrmas_python.utils import cache
+
+from ddrmas_python.utils.base_logger import logger
+
 
 if TYPE_CHECKING:
     from ddrmas_python.models.System import System
@@ -29,13 +38,22 @@ class Agent:
     kb: set[Rule] = field(default_factory=set)
     trust: dict[Agent, float] = field(default_factory=dict)
     extended_kbs: dict[str, set[Rule]] = field(default_factory=dict)
+    cache: dict[tuple(LLiteral, QueryFocus), asyncio.Future] = field(default_factory=dict)
+
 
     def __hash__(self) -> int:
         return hash(self.name)
 
+    # @cache.memoize(except_args=["hist"])
     async def query(
         self, p: LLiteral, focus: QueryFocus, hist: list[LLiteral]
     ) -> Answer:
+        
+        
+        logger.info(f"""Agent {self.name} starting execution of Query {focus.name},
+          p={str(p)}, hist=[{",".join([str(q) for q in hist])}]:\n
+                        """)
+
         args_p = set()
         args_not_p = set()
         tv_p = TruthValue.FALSE
@@ -48,52 +66,158 @@ class Agent:
         rlits = self.find_similar_lliterals(p, extended_kb)
 
         print("CHEGUEI AQUI ANTES DO RETORNO SEM RLITS")
+        
 
         if not rlits:
-            return Answer(p, focus, TruthValue.FALSE)
+            return Answer(p, focus, TruthValue.FALSE, args_p, args_not_p)
 
-        args_p = self.create_fallacious_arguments(hist, rlits)
+        # rlits = [p1 for p1 in rlits if {p1, p1.negated()}.isdisjoint(hist)]
 
-        for p1 in rlits:
-            (
-                tv_p_strict,
-                args_p1_strict,
-                args_not_p1_strict,
-                has_strict_answer_p1,
-            ) = await self.find_local_answers(extended_kb, p1)
+        args_p, rlits_not_in_hist = self.create_fallacious_arguments(hist, rlits)
 
-            args_p.update(args_p1_strict)
-            args_not_p.update(args_not_p1_strict)
+        if not rlits_not_in_hist:
+            return Answer(p, focus, TruthValue.UNDECIDED, args_p, args_not_p)
+        
+        logger.info(f"""rlits não repetidos encontrados: {rlits_not_in_hist}
+                    """)
 
-            print("CHEGUEI AQUI (APÓS STRICT FINDING)")
-            args_p1 = await self.find_defeasible_args(p1, extended_kb, focus, hist)
-            args_not_p1 = await self.find_defeasible_args(
-                p1.negated(), extended_kb, focus, hist
-            )
+        # if (p, focus) in self.cache.keys():
+        #     print(f"Agent {self.name} ESPERANDO FUTURE...")
+        #     logger.info(f"Agent {self.name} ESPERANDO FUTURE...")
+        #     logger.info("PARA "+str((p, focus)))
+        #     logger.info("hist = "+str(hist))
+        #     if self.cache[(p, focus)].done():
+        #         print(f"... E já foi resolvido")
+        #     ans = await self.cache[(p, focus)]
+        #     return ans
 
-            if has_strict_answer_p1 and not tv_p_strict:
-                tv_p = TruthValue.FALSE
-                for arg in args_p1:
-                    arg.rejected = True
+        
+        # loop = asyncio.get_running_loop()
+        # fut = loop.create_future()
+        # self.cache[(p, focus)] = fut
 
-            elif has_strict_answer_p1 and tv_p_strict:
-                tv_p = TruthValue.TRUE
-                for arg in args_not_p1:
-                    arg.rejected = True
+    
+        for p1 in rlits_not_in_hist:
+            
+            # (
+            #     tv_p_strict,
+            #     args_p1_strict,
+            #     args_not_p1_strict,
+            #     has_strict_answer_p1,
+            # ) = await self.find_local_answers(extended_kb, p1)
 
+            positive_p1 = LLiteral(p1.definer, p1.literal.as_positive())
+
+            tv_p1_strict = False
+            args_p1 = set()
+            args_not_p1 = set()
+            has_strict_answer_p1 = False
+
+            if (positive_p1, focus) in self.cache.keys():
+                logger.info(f"ESPERANDO GERACAO DE ARGUMENTO PARA p1={positive_p1} e not p1")
+                args_p1, args_not_p1, tv_p1 = await self.get_cached_args(
+                    focus, p1, positive_p1
+                    )
             else:
-                tv_p1 = self.compare_def_args(args_p1, args_not_p1)
+                loop = asyncio.get_running_loop()
+                self.cache[(positive_p1, focus)] = loop.create_future()
+
+                local_answer_p1 = await self.local_ans(p1, extended_kb)
+                if local_answer_p1["tv"] == True:
+                    args_p1.add(local_answer_p1["arg"])
+                    tv_p1_strict = True
+                    has_strict_answer_p1 = True
+                else:
+                    local_answer_not_p1 = await self.local_ans(p1, extended_kb)
+                    if local_answer_not_p1["tv"] == True:
+                        args_not_p1.add(local_answer_not_p1["arg"])                      
+                        has_strict_answer_p1 = True
+
+                args_p1.update(await self.find_defeasible_args(p1, extended_kb, focus, hist))
+                args_not_p1.update(
+                    await self.find_defeasible_args(p1.negated(), extended_kb, focus, hist)
+                    )
+                
+                if has_strict_answer_p1 and not tv_p1_strict:
+                    tv_p = TruthValue.FALSE
+                    for arg in args_p1:
+                        arg.rejected = True
+
+                elif has_strict_answer_p1 and tv_p1_strict:
+                    tv_p = TruthValue.TRUE
+                    for arg in args_not_p1:
+                        arg.rejected = True
+
+                else:
+                    tv_p1 = self.compare_def_args(args_p1, args_not_p1)
 
                 if tv_p1 == TruthValue.TRUE:
                     tv_p = TruthValue.TRUE
                 elif tv_p1 == TruthValue.UNDECIDED and tv_p != TruthValue.TRUE:
                     tv_p = TruthValue.UNDECIDED
+                
+                self.set_cached_args(
+                    focus, p1, positive_p1, args_p1, args_not_p1, tv_p1
+                    )
+
+            print("CHEGUEI AQUI (APÓS DEF FINDING)")
+            logger.info(f"""Executou find_def_args para p1={p1}.\n
+                            Query atual: p={p}, hist={hist}""")
+            
+            if args_p1:
+                args_p1_str = "\n".join(str(arg) for arg in args_p1)
+                logger.info(f"""args_p1 = \n{args_p1_str}""")
+            if args_not_p1:
+                args_p1_str = "\n".join(str(arg) for arg in args_not_p1)
+                logger.info(f"""args_not_p1 = {args_p1_str}""")
+
 
             args_p = args_p.union(args_p1)
             args_not_p = args_not_p.union(args_not_p1)
 
-        return Answer(p, focus, tv_p, args_p, args_not_p)
+        ans = Answer(p, focus, tv_p, args_p, args_not_p)
 
+        logger.info(f"Agent {self.name} achou answer para {p}: {ans}")
+
+        # try:
+        #     self.cache[(p, focus)].set_result(ans)
+        #     logger.info(f"Resposta gravada na cache do agente {self.name} na chave {(p, focus)}")
+        # except Exception as exc:
+        #     traceback.print_exc()
+        #     logger.error(exc)
+
+        return ans
+
+    def set_cached_args(self, focus, p1, positive_p1, args_p1, args_not_p1, tv_p1):
+        """
+        TODO: verificar necessidade de criar criar lock para cache na atualização
+        """
+        
+        if p1 == positive_p1:
+            args_positive_p1 = args_p1
+            args_negative_p1 = args_not_p1
+        else:
+            args_positive_p1 = args_not_p1
+            args_negative_p1 = args_p1
+                
+        self.cache[(positive_p1, focus)].set_result(
+                    (args_positive_p1, args_negative_p1, tv_p1)
+                    )
+
+    async def get_cached_args(self, focus, p1, positive_p1):
+        args_positive_p1, args_negative_p1, tv_p1 = \
+                    await self.cache[(positive_p1, focus)]
+                
+        if p1 == positive_p1:
+            args_p1 = args_positive_p1
+            args_not_p1 = args_negative_p1
+        else:
+            args_p1 = args_negative_p1
+            args_not_p1 = args_positive_p1
+        return args_p1, args_not_p1, tv_p1
+    
+            
+        
     def create_new_extended_kb(self, focus):
         localized_focus_kb = set(rule.localize(self) for rule in focus.kb)
         extended_kb = self.kb.union(localized_focus_kb)
@@ -101,42 +225,25 @@ class Agent:
         return extended_kb
 
     def find_similar_lliterals(self, p: LLiteral, extended_kb: set[Rule]):
-        rlits = []
+        rlits = set()
         for rule in extended_kb:
             if self.system.similar_enough(rule.head, p):
-                rlits.append(rule.head)
+                rlits.add(rule.head)
 
         return rlits
 
     def create_fallacious_arguments(self, hist: list[LLiteral], rlits: list[LLiteral]):
         args_p = set()
+        new_rlits = set()
         for i, p1 in enumerate(rlits):
             if not {p1, p1.negated()}.isdisjoint(hist):
-                fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True))
+                fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True), strength=1.)
                 args_p.add(fall_arg_p1)
-                rlits.pop(i)
+            else:
+                new_rlits.add(p1)
 
-        return args_p
-
-    async def find_local_answers(self, extended_kb, p1):
-        tv_p = False
-        args_p = set()
-        args_not_p = set()
-        has_strict_answer = False
-
-        local_answer_p1 = await self.local_ans(p1, extended_kb)
-        if local_answer_p1["tv"]:
-            args_p.add(local_answer_p1["arg"])
-            tv_p = True
-            has_strict_answer = True
-            return tv_p, args_p, args_not_p, has_strict_answer
-
-        local_answer_not_p1 = await self.local_ans(p1.negated(), extended_kb)
-        if local_answer_not_p1["tv"]:
-            args_not_p.add(local_answer_not_p1["arg"])
-            has_strict_answer = True
-
-        return tv_p, args_p, args_not_p, has_strict_answer
+        return args_p, new_rlits
+    
 
     async def local_ans(self, p1: LLiteral, extended_kb: set[Rule]) -> dict:
         async def build_subarguments_based_on_rule(rule: Rule):
@@ -188,11 +295,17 @@ class Agent:
             for q in rule.body:
                 args_q = None
                 if q.definer == Sign.SCHEMATIC:
-                    args_q = await self.query_agents(
-                        self.system.agents, q, focus, hist_p1
-                    )
+                    if q.literal in (rule.head.literal for rule in focus.kb if not rule.body):
+                        # quando o literal pesquisado é resolvido por uma regra de foco,
+                        # utiliza-se apenas a regra localizada
+                        args_q = await self.query_agents([self], q, focus, hist_p1)
+                    else:
+                        args_q = await self.query_agents(
+                            self.system.agents, q, focus, hist_p1
+                        )
                 elif isinstance(q.definer, Agent):
                     args_q = await self.query_agents([q.definer], q, focus, hist_p1)
+                    
                 if not args_q:
                     return (
                         None,
@@ -213,6 +326,9 @@ class Agent:
 
         rules_with_head_p1 = {rule for rule in extended_kb if rule.head == p1}
         for rule in rules_with_head_p1:
+
+            logger.info(f"Processando regra: {rule}")
+
             possible_subargs_r, map_arg_to_q = await build_subarguments_based_on_rule(
                 rule
             )
@@ -239,6 +355,7 @@ class Agent:
         if not possible_subargs_r:
             arg_p1 = Argument(ArgNodeLabel(p1))  # "folha"
             arg_p1.supp_by_justified = True
+            arg_p1.strength = 1.
             return {arg_p1}
 
         for subargs_combinations in itertools.product(*possible_subargs_r):
@@ -338,3 +455,6 @@ class Agent:
 
     def __str__(self) -> str:
         return self.name[0].upper()
+    
+    def __repr__(self) -> str:
+        return str(self)

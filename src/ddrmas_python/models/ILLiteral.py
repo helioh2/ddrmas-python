@@ -19,3 +19,6 @@ class ILLiteral(LLiteral):
 
     def __str__(self) -> str:
         return f"<{str(self.definer)}, {self.literal}, {self.similarity}>" 
+    
+    def __repr__(self) -> str:
+        return str(self)

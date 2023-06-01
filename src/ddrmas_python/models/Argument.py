@@ -41,16 +41,29 @@ class Argument:
         return self
 
     def is_fallacious(self) -> bool:
-        return self.conclusion.fallacious
-    
+        return (self.conclusion.fallacious 
+            or any(subarg.is_fallacious() for subarg in self.proper_subargs()))
+
+    def proper_subargs(self) -> set[Argument]:
+        """
+        TODO: pensar em colocar subargs numa cache (lista) para rápido acesso
+        """
+        subargs = set()
+
+        for subarg in self.children():
+            subargs.add(subarg)
+            subargs.update(subarg.proper_subargs())
+        
+        return subargs
+
     def direct_external_subargs(self) -> set[Argument]:
 
-        dex_subargs = []
+        dex_subargs = set()
         for subarg in self.children:
             if subarg.definer == self.definer:
-                dex_subargs += subarg.direct_external_subargs()
+                dex_subargs.update(subarg.direct_external_subargs())
             else:
-                dex_subargs.append(subarg)
+                dex_subargs.add(subarg)
         
         return dex_subargs
                 
@@ -66,7 +79,7 @@ class Argument:
             sum_ = 0
             for subarg in dex_subargs:
                 ilstrength = subarg.conclusion.label.strength(self.definer)
-                sum_ += ilstrength * subarg.update_strength()
+                sum_ += ilstrength * subarg.strength
 
             self.strength = sum_ / len(dex_subargs)
 
@@ -107,6 +120,9 @@ class Argument:
             str_ += str(arg)
 
         return str_ 
+
+    def __repr__(self) -> str:
+        return str(self)
 
     def __hash__(self) -> int:
         return hash(self.id)

@@ -37,3 +37,6 @@ class LLiteral:
     
     def __str__(self) -> str:
         return f"({str(self.definer)}, {self.literal})" 
+    
+    def __repr__(self) -> str:
+        return str(self)

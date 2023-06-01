@@ -14,7 +14,13 @@ from ddrmas_python.models.Literal import Literal
 from ddrmas_python.models.Rule import Rule
 
 from ddrmas_python.models.System import System
+from ddrmas_python.services.load_system_from_file import load_system_from_yaml_str
 from ddrmas_python.services.print_system import print_system
+
+from ddrmas_python.utils.base_logger import logger
+
+import signal
+import traceback
 
 
 def agent_name_generator():
@@ -93,13 +99,32 @@ class RandomDDRMASTester:
             self.literals.append(Literal(positive=True, pred=next(literal_name_gen), terms=["M"]))
 
 
-        similarity_between_literals = {literal: {} for literal in self.literals}
-        for literal1, literal2 in product(self.literals, self.literals):
-            sim = 1 if random.random() <= self.similarityPercentage else 0
-            similarity_between_literals[literal1][literal2] = sim
-            similarity_between_literals[literal2][literal1] = sim
+        similarity_between_literals = {literal: {} for literal in 
+                                       self.literals + [lit.negated() for lit in self.literals]}
+        for i in range(len(self.literals)):
+            literal1 = self.literals[i]
+            literal1_neg = literal1.negated()
+            similarity_between_literals[literal1][literal1] = 1
+            similarity_between_literals[literal1_neg][literal1_neg] = 1
+            similarity_between_literals[literal1][literal1_neg] = 0
+            similarity_between_literals[literal1_neg][literal1] = 0
 
-        self.system.sim_function = lambda a,b: similarity_between_literals[a][b]
+            for j in range(i+1, len(self.literals)):
+                literal2 = self.literals[j]
+                literal2_neg = literal2.negated()
+                sim = 1 if random.random() <= self.similarityPercentage else 0
+                similarity_between_literals[literal1][literal2] = sim
+                similarity_between_literals[literal2][literal1] = sim
+                similarity_between_literals[literal1_neg][literal2_neg] = sim
+                similarity_between_literals[literal2_neg][literal1_neg] = sim
+
+                similarity_between_literals[literal1][literal2_neg] = 0
+                similarity_between_literals[literal2_neg][literal1] = 0
+                similarity_between_literals[literal2][literal1_neg] = 0
+                similarity_between_literals[literal1_neg][literal2] = 0
+
+
+        self.system.sim_function = lambda a,b: similarity_between_literals[a.literal][b.literal]
 
         for _ in range(self.rulesNumber):
             definer_agent = random.choice(agents)
@@ -107,7 +132,7 @@ class RandomDDRMASTester:
             head_literal.positive = True if random.randrange(0,2)==0 else False
             head_lliteral = LLiteral(definer_agent, head_literal)
 
-            body_length = random.randrange(0,4)
+            body_length = random.randrange(0,3)
             
             body_lliterals = []
             for _ in range(body_length):
@@ -133,6 +158,8 @@ class RandomDDRMASTester:
             definer_agent.kb.add(rule)
 
         self.system.agents = agents
+
+        logger.info(f"System:\n{self.system}")
         
         return self.system
 
@@ -161,35 +188,72 @@ class RandomDDRMASTester:
         
         focus = QueryFocus(focus_name, lliteral, emitter_agent, focus_kb)
 
+
+        print("Query: ")
+        print(focus)
+        logger.info("Query: "+str(focus)+"\n")
+
         ans = await emitter_agent.query(lliteral, focus, [])
 
-        print(ans)
+        print(ans.tv_p)
+        logger.info(str(ans.tv_p)+"\n")
+
+
+        # for arg in ans.args_p:
+        #     print(str(arg))
+        #     logger.info(str(arg))
         
 
-        
+
 ##TESTE:
-# tester = RandomDDRMASTester(
-#     agentsNumber=5, 
-#     literalsNumber=10, 
-#     rulesNumber=50, 
-#     sslPercentage=0.8, 
-#     cyclePercentage=0,
-#     similarityPercentage=0.1
-# )
 
-tester = RandomDDRMASTester(
-    agentsNumber=20, 
-    literalsNumber=100, 
-    rulesNumber=300, 
-    sslPercentage=0.8, 
-    cyclePercentage=0,
-    similarityPercentage=0.1
-)
+def handler(signum, frame):
+    print("Demorou demais!!")
+    raise Exception("end of time")
 
-print_system(tester.create_system())
-        
-print("\n\n\n--------query\n\n")
 
-asyncio.run(tester.do_random_query(3))
 
+for k in range(1):
+
+    tester = RandomDDRMASTester(
+        agentsNumber=5, 
+        literalsNumber=10, 
+        rulesNumber=20, 
+        sslPercentage=0.8, 
+        cyclePercentage=0,
+        similarityPercentage=0.05
+    )
+
+    """ 
+    TODO: verificar o que se deseja registrar.
+        - Quantidade e tamanho médio dos argumentos gerados
+            - Uso de memória
+            - Verificação da existência de argumentos repetidos ou muito similares
+        - Tempo de execução médio
+        - Quantidade de mensagens trocadas entre os agentes
+
+    """
+
+    signal.signal(signal.SIGALRM, handler)
+
+    signal.alarm(20)
+
+    # tester = RandomDDRMASTester(
+    #     agentsNumber=20, 
+    #     literalsNumber=100, 
+    #     rulesNumber=300, 
+    #     sslPercentage=0.8, 
+    #     cyclePercentage=0,
+    #     similarityPercentage=0.1
+    # )
+
+    print_system(tester.create_system())
+            
+    print("\n\n\n--------query\n\n")
+
+    try:
+        asyncio.run(tester.do_random_query(3))
+    except Exception as exc:
+        traceback.print_exc()
+        logger.error(exc)
 

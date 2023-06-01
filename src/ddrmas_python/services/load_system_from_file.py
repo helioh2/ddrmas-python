@@ -62,7 +62,7 @@ from ddrmas_python.models.Literal import Literal
 from ddrmas_python.models.Rule import Rule, RuleType
 from ddrmas_python.models.System import System
 
-from yaml import load
+from yaml import load, safe_load
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
@@ -111,11 +111,8 @@ def parse_rule(rule_name: str, rule_string: str, agents_dict: dict[str, Agent]) 
     return Rule(rule_name, head, body, rule_type)
 
 
-def load_system_from_file(path: str) -> System:
-    
-    stream = open(path, "r", encoding="utf-8")
-    data = load(stream, Loader=Loader)
-    
+def load_system_from_yaml_dict(data: dict) -> System:
+
     system = System()
 
     agents_dict: dict[str, Agent] = {}
@@ -133,10 +130,17 @@ def load_system_from_file(path: str) -> System:
         for agent_trusted_name, value in data[agent_name]["trust"].items():
             agent_trusted = agents_dict[agent_trusted_name]
             agent.trust[agent_trusted] = float(value)
-    
-    # print_system(system)
 
     return system
+    
+
+def load_system_from_file(path: str) -> System:
+    stream = open(path, "r", encoding="utf-8")
+    data = load(stream, Loader=Loader)
+    return load_system_from_yaml_dict(data)
 
 
-# load_system_from_file("./mushroom.yaml")
+def load_system_from_yaml_str(_yaml: str):
+    data = safe_load(_yaml)
+    return load_system_from_yaml_dict(data)
+    
