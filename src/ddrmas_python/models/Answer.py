@@ -21,3 +21,6 @@ class Answer:
     tv_p: TruthValue
     args_p: set[Argument] = field(default_factory=set)
     args_not_p: set[Argument] = field(default_factory=set)
+
+    def __str__(self) -> str:
+        return f"Ans({str(self.p)}, {str(self.query_focus.name)}, {str(self.tv_p)})"

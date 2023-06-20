@@ -84,6 +84,7 @@ def parse_literal(literal_string: str) -> Literal:
 
 
 def parse_lliteral(lliteral_string: str, agents_dict: dict[str, Agent]) -> LLiteral:
+
     split_llit = lliteral_string[1:-1].split(",")
 
     if split_llit[0].strip() == "@":
@@ -106,7 +107,10 @@ def parse_rule(rule_name: str, rule_string: str, agents_dict: dict[str, Agent]) 
         split_rule = rule_string.split("<-")
 
     head = parse_lliteral(split_rule[0].strip(), agents_dict)
-    body = [parse_lliteral(bm.strip(), agents_dict) for bm in split_rule[1].split(";")]
+    if split_rule[1].strip() == "":
+        body = set()
+    else:
+        body = set(parse_lliteral(bm.strip(), agents_dict) for bm in split_rule[1].split(";"))
 
     return Rule(rule_name, head, body, rule_type)
 
@@ -123,9 +127,11 @@ def load_system_from_yaml_dict(data: dict) -> System:
         agents_dict[agent_name] = agent
 
     for agent_name, agent in agents_dict.items():
-        for rule_name, rule_string in data[agent_name]["rules"].items():   
-            rule = parse_rule(rule_name, rule_string, agents_dict)
-            agent.kb.add(rule)
+        if data[agent_name]["rules"]:
+
+            for rule_name, rule_string in data[agent_name]["rules"].items():   
+                rule = parse_rule(rule_name, rule_string, agents_dict)
+                agent.kb.add(rule)
 
         for agent_trusted_name, value in data[agent_name]["trust"].items():
             agent_trusted = agents_dict[agent_trusted_name]

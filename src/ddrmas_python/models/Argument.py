@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from threading import Lock
 from uuid import UUID, uuid4
+from ddrmas_python.models import LLiteral
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
 
 
@@ -50,7 +51,7 @@ class Argument:
         """
         subargs = set()
 
-        for subarg in self.children():
+        for subarg in self.children:
             subargs.add(subarg)
             subargs.update(subarg.proper_subargs())
         
@@ -91,6 +92,14 @@ class Argument:
     def defeats(self, arg: Argument) -> bool:
         return self.attacks(arg) and self.strength >= arg.strength
     
+
+    def prems(self):
+        return (subarg.conclusion for subarg in self.proper_subargs)
+
+    def size(self) -> int:
+        return 1 + len(self.prems())
+
+
     @property
     def definer(self):
         return self.conclusion.label.definer

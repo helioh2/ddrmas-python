@@ -8,6 +8,8 @@ ddrmas-python = {editable = true, path = "."}
 pyyaml = "*"
 py-lru-cache = "*"
 promise = "*"
+numpy = "*"
+pandas = "*"
 
 [dev-packages]
 tox = "*"

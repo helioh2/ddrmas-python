@@ -21,7 +21,7 @@ class Rule:
     
     name: str
     head: LLiteral
-    body: list[LLiteral] = field(default_factory=list)
+    body: set[LLiteral] = field(default_factory=set)
     type: RuleType = RuleType.DEFEASIBLE
     
     
@@ -40,4 +40,7 @@ class Rule:
         return str_
     
     def __hash__(self) -> int:
-        return hash(self.name)
+        return hash(str(self))
+    
+    def __eq__(self, __value: object) -> bool:
+        return hash(self) == hash(__value)
