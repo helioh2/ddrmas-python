@@ -121,21 +121,64 @@ def load_system_from_yaml_dict(data: dict) -> System:
 
     agents_dict: dict[str, Agent] = {}
 
-    for agent_name in data.keys():
+    for agent_name in data["agents"].keys():
         agent = Agent(agent_name, system)
         system.add_agent(agent)
         agents_dict[agent_name] = agent
 
     for agent_name, agent in agents_dict.items():
-        if data[agent_name]["rules"]:
+        if data["agents"][agent_name]["rules"]:
 
-            for rule_name, rule_string in data[agent_name]["rules"].items():   
+            for rule_name, rule_string in data["agents"][agent_name]["rules"].items():   
                 rule = parse_rule(rule_name, rule_string, agents_dict)
                 agent.kb.add(rule)
 
-        for agent_trusted_name, value in data[agent_name]["trust"].items():
+        for agent_trusted_name, value in data["agents"][agent_name]["trust"].items():
             agent_trusted = agents_dict[agent_trusted_name]
             agent.trust[agent_trusted] = float(value)
+
+    vocabulary = list(system.vocabulary)
+
+    similarity_between_literals = {literal: {} for literal in 
+                                       vocabulary + [lit.negated() for lit in vocabulary]}
+    pairs = set()
+    for sim in data["similarities"]:
+        on_equal: list[str] = sim.split("=")
+        # sim_value = int(on_equal[1].strip())
+        left_side_cleaned = on_equal[0].replace("theta", "").replace("(", "").replace(")", "").replace("['M']", "").strip()
+        on_comma = left_side_cleaned.split(",")
+        lit1 = Literal(True, on_comma[0].strip(), ["M"])
+        lit2 = Literal(True, on_comma[1].strip(), ["M"])
+
+        pairs.add((lit1, lit2))
+
+    for i in range(len(vocabulary)):
+            literal1 = vocabulary[i]
+            literal1_neg = literal1.negated()
+            similarity_between_literals[literal1][literal1] = 1
+            similarity_between_literals[literal1_neg][literal1_neg] = 1
+            similarity_between_literals[literal1][literal1_neg] = 0
+            similarity_between_literals[literal1_neg][literal1] = 0
+
+            for j in range(i+1, len(vocabulary)):
+                literal2 = vocabulary[j]
+                literal2_neg = literal2.negated()
+
+                sim = 0
+                if (literal1, literal2) in pairs or (literal2, literal1) in pairs:
+                    sim = 1
+
+                similarity_between_literals[literal1][literal2] = sim
+                similarity_between_literals[literal2][literal1] = sim
+                similarity_between_literals[literal1_neg][literal2_neg] = sim
+                similarity_between_literals[literal2_neg][literal1_neg] = sim
+
+                similarity_between_literals[literal1][literal2_neg] = 0
+                similarity_between_literals[literal2_neg][literal1] = 0
+                similarity_between_literals[literal2][literal1_neg] = 0
+                similarity_between_literals[literal1_neg][literal2] = 0
+    
+    system.sim_function = lambda a,b: similarity_between_literals[a][b]
 
     return system
     

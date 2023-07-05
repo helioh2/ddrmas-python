@@ -32,11 +32,25 @@ class LLiteral:
             return LLiteral(agent, self.literal)
         return self
     
+    def equivalent_to(self, lliteral: LLiteral, sim_function: function, sim_threshold: float) -> bool:
+        return (sim_function(self.literal, lliteral.literal) >= sim_threshold and 
+                (self.definer == lliteral.definer or Sign.SCHEMATIC in (self.definer, lliteral.definer)))
+
+
+    def has_equivalent_positive_literal(self, lliteral: LLiteral, sim_function: function, sim_threshold: float) -> bool:
+        return (sim_function(self.literal.as_positive(), lliteral.literal.as_positive()) >= sim_threshold and 
+                (self.definer == lliteral.definer or Sign.SCHEMATIC in (self.definer, lliteral.definer)))
+
     def __hash__(self) -> int:
-        return hash(str(self.definer) + str(self.literal))
+        return hash(str(self))
     
     def __str__(self) -> str:
         return f"({str(self.definer)}, {self.literal})" 
     
     def __repr__(self) -> str:
         return str(self)
+    
+    def __eq__(self, __value: object) -> bool:
+        return hash(self) == hash(__value)
+    
+

@@ -7,7 +7,7 @@ import enum
 if TYPE_CHECKING:
     from ddrmas_python.models.Agent import Agent
 
-from ddrmas_python.models.LLiteral import LLiteral
+from ddrmas_python.models.LLiteral import LLiteral, Sign
 
 
 class RuleType(enum.Enum):
@@ -36,7 +36,7 @@ class Rule:
         # str_ += self.name + ": "
         str_ += str(self.head)
         str_ += " "+ self.type.value+" "
-        str_ += ", ".join(str(bm) for bm in self.body) 
+        str_ += "; ".join(str(bm) for bm in self.body) 
         return str_
     
     def __hash__(self) -> int:
@@ -44,3 +44,6 @@ class Rule:
     
     def __eq__(self, __value: object) -> bool:
         return hash(self) == hash(__value)
+    
+        
+        

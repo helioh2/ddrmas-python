@@ -2,8 +2,10 @@
 import asyncio
 from itertools import product
 import math
+import os
 import random
 import string
+import time
 
 
 import pandas as pd
@@ -26,6 +28,15 @@ from ddrmas_python.utils.base_logger import logger
 
 import signal
 import traceback
+
+import pickle
+
+
+
+class MyException(RuntimeError):
+    def __init__(self,message,query_focus):
+        super().__init__(message)
+        self.query_focus = query_focus
 
 
 def agent_name_generator():
@@ -60,17 +71,26 @@ def focus_name_generator():
         cont += 1
 
 
+def sim_to_str(sim_dict):
+    str_ = ""
+    visited = set()
+    for lit1, rlits in sim_dict.items():
+        for lit2 in rlits:
+            if lit1 == lit2 or not lit1.positive or (lit1,lit2) in visited or (lit2, lit1) in visited:
+                continue
+            if sim_dict[lit1][lit2] != 0:
+                str_ += f"theta({str(lit1)}, {str(lit2)}) = {str(sim_dict[lit1][lit2])}\n"
+                visited.add((lit1, lit2))
+
+    return str_
+
 
 def print_similarities(sim_dict):
     print("Similarities: ")
     logger.info("Similarities: ")
-    for lit1, rlits in sim_dict.items():
-        for lit2 in rlits:
-            if lit1 == lit2 or not lit1.positive:
-                continue
-            if sim_dict[lit1][lit2] != 0:
-                print(f"theta({str(lit1)}, {str(lit2)}) = {str(sim_dict[lit1][lit2])}")
-                logger.info(f"theta({str(lit1)}, {str(lit2)}) = {str(sim_dict[lit1][lit2])}")
+    print(sim_to_str(sim_dict))
+
+
 
 
 @dataclass
@@ -83,29 +103,33 @@ class RandomDDRMASTester:
     cyclePercentage: float   ## TODO
     similarityPercentage: float
     similarity_function = lambda a, b: 1 if a==b or random.random() <= 0.1 else 0
+    similarity_between_literals: dict = field(default_factory=dict)
     system: System = None
     focus_name_gen = focus_name_generator()
     literals: list[Literal] = field(default_factory=list)
+    cycles_count: int = 0
     
 
     def create_system(self) -> System:
 
         self.system = System(sim_threshold=1)
 
-        agents = {}
+        self.system.agents = {}
         self.literals = []
-        rules = []
+        # rules = []
         agents_last_rule_numbers = {}
 
         agent_name_gen = agent_name_generator()
         literal_name_gen = literal_name_generator()
 
+        
+
         for _ in range(self.agentsNumber):
             agent = Agent(next(agent_name_gen), self.system)
-            agents[agent.name] = agent
+            self.system.agents[agent.name] = agent
             agents_last_rule_numbers[agent.name] = 1
 
-        for agent, trusted_agent in product(agents.values(), agents.values()):
+        for agent, trusted_agent in product(self.system.agents.values(), self.system.agents.values()):
             if agent == trusted_agent:
                 agent.trust[trusted_agent] = 1
             else:
@@ -115,7 +139,7 @@ class RandomDDRMASTester:
             self.literals.append(Literal(positive=True, pred=next(literal_name_gen), terms=["M"]))
 
 
-        similarity_between_literals = {literal: {} for literal in 
+        self.similarity_between_literals = {literal: {} for literal in 
                                        self.literals + [lit.negated() for lit in self.literals]}
         
         pairs = set()
@@ -135,10 +159,10 @@ class RandomDDRMASTester:
         for i in range(len(self.literals)):
             literal1 = self.literals[i]
             literal1_neg = literal1.negated()
-            similarity_between_literals[literal1][literal1] = 1
-            similarity_between_literals[literal1_neg][literal1_neg] = 1
-            similarity_between_literals[literal1][literal1_neg] = 0
-            similarity_between_literals[literal1_neg][literal1] = 0
+            self.similarity_between_literals[literal1][literal1] = 1
+            self.similarity_between_literals[literal1_neg][literal1_neg] = 1
+            self.similarity_between_literals[literal1][literal1_neg] = 0
+            self.similarity_between_literals[literal1_neg][literal1] = 0
 
             for j in range(i+1, len(self.literals)):
                 literal2 = self.literals[j]
@@ -148,67 +172,256 @@ class RandomDDRMASTester:
                 if (literal1, literal2) in pairs or (literal2, literal1) in pairs:
                     sim = 1
 
-                similarity_between_literals[literal1][literal2] = sim
-                similarity_between_literals[literal2][literal1] = sim
-                similarity_between_literals[literal1_neg][literal2_neg] = sim
-                similarity_between_literals[literal2_neg][literal1_neg] = sim
+                self.similarity_between_literals[literal1][literal2] = sim
+                self.similarity_between_literals[literal2][literal1] = sim
+                self.similarity_between_literals[literal1_neg][literal2_neg] = sim
+                self.similarity_between_literals[literal2_neg][literal1_neg] = sim
 
-                similarity_between_literals[literal1][literal2_neg] = 0
-                similarity_between_literals[literal2_neg][literal1] = 0
-                similarity_between_literals[literal2][literal1_neg] = 0
-                similarity_between_literals[literal1_neg][literal2] = 0
+                self.similarity_between_literals[literal1][literal2_neg] = 0
+                self.similarity_between_literals[literal2_neg][literal1] = 0
+                self.similarity_between_literals[literal2][literal1_neg] = 0
+                self.similarity_between_literals[literal1_neg][literal2] = 0
 
-        print_similarities(similarity_between_literals)
+        print_similarities(self.similarity_between_literals)
 
-        self.system.sim_function = lambda a,b: similarity_between_literals[a.literal][b.literal]
+        self.system.sim_function = lambda a,b: self.similarity_between_literals[a][b]
 
-        for k in range(self.rulesNumber):
-            definer_agent = random.choice(list(agents.values()))
+        body_length_count = 0
+
+        agents_list = list(self.system.agents.values())
+        current_agent_index = 0
+        k = 0
+        while k < self.rulesNumber:
+            definer_agent:Agent = agents_list[current_agent_index]
+            current_agent_index = (current_agent_index + 1) % len(agents_list)
+            
             head_literal = random.choice(self.literals)
-            head_literal.positive = True if random.randrange(0,2)==0 else False
-            head_lliteral = LLiteral(definer_agent, head_literal)
+            head_literal_copy = Literal(True if random.randrange(0,2)==0 else False, head_literal.pred, head_literal.terms) 
+            head_lliteral = LLiteral(definer_agent, head_literal_copy)
 
-            body_length = random.randrange(0,3)
+            body_length = body_length_count
+            body_length_count = (body_length_count + 1) % 3  #distribuição igual de regras com corpo de tamanho 0, 1 ou 2
             
             body_lliterals = []
-            used_literals = {head_literal}
+            used_literals = {head_literal_copy}
             for _ in range(body_length):
 
                 literal = random.choice(self.literals)
-                while literal in used_literals:
+                literal_copy = Literal(True if random.randrange(0,2)==0 else False, literal.pred, literal.terms) 
+                while literal_copy in used_literals:
                     literal = random.choice(self.literals)
-                used_literals.add(literal)
-
-                literal.positive = random.randrange(0,2) == 0
+                    literal_copy = Literal(True if random.randrange(0,2)==0 else False, literal.pred, literal.terms) 
+                
+                
+                used_literals.add(literal_copy)
 
 
                 is_ssl = random.random() <= self.sslPercentage
                 if is_ssl:
                     definer = Sign.SCHEMATIC
                 else:
-                    definer = random.choice(list(agents.values()))
+                    definer = random.choice(list(self.system.agents.values()))
                 
-                body_lliterals.append(LLiteral(definer, literal))
+                body_lliterals.append(LLiteral(definer, literal_copy))
 
 
             rule_name = "r_" + definer_agent.name + str(agents_last_rule_numbers[definer_agent.name])
             agents_last_rule_numbers[definer_agent.name] += 1
-            rule = Rule(rule_name, head_lliteral, body_lliterals, RuleType.DEFEASIBLE)
+            rule = Rule(rule_name, head_lliteral, set(body_lliterals), RuleType.DEFEASIBLE)
 
             if rule in definer_agent.kb:
                 k -= 1
                 continue
 
-            rules.append(rule)
-            definer_agent.kb.add(rule)
+            rule, rules_to_remove = self.check_rule(definer_agent.kb, rule)
+            if rule:
+                
+                will_add = True
+                for r in rules_to_remove:
+                    if r == rule:
+                        will_add = False
+                        continue
+                    # hash_r = hash(r)
+                    # print(hash_r)
+                    # print(r)
+                    # for rule in definer_agent.kb:
+                    #     if rule.name == r.name:
+                    #         print("Removendo regra:", rule)
+                    #         print("Com hash:", hash(rule))
+                    #         break
+                    definer_agent.kb.remove(r)
+                    body_length_count = len(r.body)
+                    k -= 1
 
+                if will_add:
+                    definer_agent.kb.add(rule)
+                    # print("Inserindo regra:", rule)
+                    # print("Com hash:", hash(rule))
+                else:
+                    k -= 1
+            else:
+                k -= 1
+                body_length_count = (body_length_count - 1) % 3
 
-
-        self.system.agents = agents
+            k += 1
 
         logger.info(f"System:\n{self.system}")
         
         return self.system
+    
+
+
+    def check_rule(self, kb: list[Rule], new_rule: Rule):
+        """
+        test if new rule introduces some kind of reduncancy, and updates
+        kb as necessary
+        """
+
+        def remove_body_members_which_are_redundant_or_conflicting(new_rule: Rule):
+            """
+            Ex: r_a16: (a1, aa1['M']) <= (@, ac1['M']), (a1, ac1['M'])  // keep only (@, ac1['M'])
+
+            """ 
+            to_remove = set()
+            for bm1 in new_rule.body:
+                for bm2 in new_rule.body:
+                    if bm1 != bm2 and bm1.has_equivalent_positive_literal(bm2, System.sim_function, System.sim_threshold):
+                        if bm1.definer == Sign.SCHEMATIC:
+                            to_remove.add(bm2)
+                        elif bm2.definer == Sign.SCHEMATIC:
+                            to_remove.add(bm1)
+
+            for bm in to_remove:
+                new_rule.body.remove(bm)
+
+            return new_rule
+                        
+
+
+        def remove_more_specific_rule_when_general_exists(new_rule_aux: Rule):
+            """
+            Ex: 
+            (a1, aa1['M']) <= (@, ~ab1['M']), (@, ac1['M'])  // keep this
+            (a1, aa1['M']) <= (a1, ~ab1['M']), (@, ac1['M'])
+
+
+            """
+            mod_rule = Rule(name=new_rule_aux.name, head=new_rule_aux.head, type=new_rule_aux.type)
+            for rule in kb:
+                if rule.head.literal == new_rule_aux.head.literal and len(rule.body) == len(new_rule_aux.body) and rule.type == new_rule_aux.type:
+                    for bm in rule.body:
+                        for bm_new in rule.body:
+                            if bm.literal == bm_new.literal:
+                                if bm.definer == Sign.SCHEMATIC:
+                                    mod_rule.body.add(bm)
+                                else:
+                                    mod_rule.body.add(bm_new)
+                                break
+                    if len(new_rule_aux.body) == len(mod_rule.body):
+                        return mod_rule, {rule}
+                    #else
+                    mod_rule.body.clear()
+                    
+            return new_rule_aux, set()
+
+
+
+
+        def remove_rules_whose_body_is_a_superset_of_other(new_rule_aux: Rule):
+            """
+            Ex:
+            (a1, aa1['M']) <= (@, ~ab1['M'])
+            (a1, aa1['M']) <= (@, ~ab1['M']), (@, ac1['M']) //remove this
+            (a1, aa1['M']) <= (@, ac1['M'])
+            """
+            to_remove = set()
+            for rule in kb:
+                if rule.head.literal == new_rule_aux.head.literal:
+                    if rule.body.issubset(new_rule_aux.body):
+                        return None, {}  #do not add new_rule_aux
+                    elif new_rule_aux.body.issubset(rule.body):
+                        to_remove.add(rule)
+            
+            return new_rule_aux, to_remove
+                    
+
+
+        def remove_rule_if_introduces_cycle(new_rule_aux: Rule):
+            
+            def has_cycle_backwards(kb: set[Rule], chain: tuple[Rule]):
+                for rule_kb in kb:  # para cada regra da kb
+                    if rule_kb in chain:
+                        continue
+                    
+                    for bm in chain[-1].body:  # para cada membro do corpo do último da cadeia
+
+                        if rule_kb.head.equivalent_to(bm, System.sim_function, System.sim_threshold):  # se a cabeça da regra "bate" com o membro do corpo do último da cadeia
+                            for b in rule_kb.body:  # para cada membro do corpo da regra da kb
+                                if any(b.has_equivalent_positive_literal(rule.head, System.sim_function, System.sim_threshold) for rule in chain):  # se algum membro do corpo da regra da kb é equivalente à cabeça de alguma regra na cadeia
+                                    #ciclo encontrado
+                                    return True
+
+                            res = has_cycle_backwards(kb.difference({rule_kb}), chain + (rule_kb,))
+                            if res:  # encontrou ciclo em algum ponto
+                                return res
+                return False
+                         
+
+            def has_cycle_forward(kb: set[Rule], chain: tuple[Rule]):
+                for rule_kb in kb:  # para cada regra da kb
+                    if rule_kb in chain:
+                        continue
+                    
+                    for bm in rule_kb.body:  # para cada membro do corpo da regra da kb
+
+                        if bm.equivalent_to(chain[-1].head, System.sim_function, System.sim_threshold):  # se a cabeça da última regra da cadeia "bate" com o membro do corpo da regra da kb
+                            for b in set().union(*[rule.body for rule in chain]):  # para cada membro do corpo das regras da cadeia
+                                if b.has_equivalent_positive_literal(rule_kb.head, System.sim_function, System.sim_threshold):  # se algum membro do corpo das regras da cadeia "bate" com a cabeça da regra da kb
+                                    #ciclo encontrado
+                                    return True
+
+                            res = has_cycle_forward(kb.difference({rule_kb}), chain + (rule_kb,))
+                            if res:  # encontrou ciclo em algum ponto
+                                return res
+                return False
+
+
+            if not new_rule_aux:
+                return None
+            max_cycles = int(self.rulesNumber * self.cyclePercentage)
+            
+
+            for bm in new_rule_aux.body:
+                if new_rule_aux.head.has_equivalent_positive_literal(bm, System.sim_function, System.sim_threshold):
+                    return None
+
+            # for rule in set().union(agent.kb for agent in self.system.agents.values()):
+            #     ## check head with body of others:
+
+            global_kb = set()
+            for agent in self.system.agents.values():
+                global_kb.update(agent.kb)
+
+            if (has_cycle_backwards(global_kb,
+                                    chain=(new_rule_aux,)) or
+                has_cycle_forward(global_kb,
+                                 chain=(new_rule_aux,))):
+                if self.cycles_count >= max_cycles:
+                    return None
+                self.cycles_count += 1
+        
+            return new_rule_aux
+                
+
+        rules_to_remove = set()
+
+        new_rule = remove_body_members_which_are_redundant_or_conflicting(new_rule)
+        new_rule, to_remove = remove_more_specific_rule_when_general_exists(new_rule)
+        rules_to_remove.update(to_remove)
+        new_rule, to_remove = remove_rules_whose_body_is_a_superset_of_other(new_rule)
+        rules_to_remove.update(to_remove)
+        new_rule = remove_rule_if_introduces_cycle(new_rule)
+        return new_rule, rules_to_remove
 
         
     async def do_random_query(self, focus_kb_side = 0):
@@ -234,6 +447,8 @@ class RandomDDRMASTester:
             if rule in focus_kb:
                 k -= 1
                 continue
+
+            
             
             focus_kb.append(rule)
 
@@ -245,14 +460,19 @@ class RandomDDRMASTester:
         print(focus)
         logger.info("Query: "+str(focus)+"\n")
     
-        ans = await emitter_agent.query(lliteral, focus, [])
-
-        return ans
+        try:
+            ans = await emitter_agent.query(lliteral, focus, [])
+        except Exception as exc:
+            exc2 = Exception(focus)
+            raise exc2
+        
+        return ans, focus
         # for arg in ans.args_p:
         #     print(str(arg))
         #     logger.info(str(arg))
         
 
+   
 
 ##TESTE:
 
@@ -262,13 +482,41 @@ def handler(signum, frame):
 
 
 
+# def results_loader():
+
+#     for _ in range(TIMES_RUN):
+#         with open('results.pkl', 'rb') as f:
+#             yield pickle.load(f)
+
+
 async def perform_queries():
     
     results = []
 
     logger.setLevel("WARNING")
 
-    for k in range(1000):
+    exec_times = []
+
+    # agentsNumber=5
+    # literalsNumber=10 
+    # rulesNumber=10 
+    # sslPercentage=0.8
+    # cyclePercentage=0
+    # similarityPercentage=0.1
+
+    if os.path.isfile("results.pkl"):
+        os.remove("results.pkl")
+
+    timesRun = 10
+
+    agentsNumber=5
+    literalsNumber=10
+    rulesNumber=20
+    sslPercentage=0.8
+    cyclePercentage=0
+    similarityPercentage=0.1
+
+    for k in range(timesRun):
 
         # tester = RandomDDRMASTester(
         #     agentsNumber=3, 
@@ -280,13 +528,13 @@ async def perform_queries():
         # )
 
 
-          tester = RandomDDRMASTester(
-            agentsNumber=5, 
-            literalsNumber=10, 
-            rulesNumber=10, 
-            sslPercentage=0.8, 
-            cyclePercentage=0,
-            similarityPercentage=0.1
+        tester = RandomDDRMASTester(
+            agentsNumber=agentsNumber, 
+            literalsNumber=literalsNumber, 
+            rulesNumber=rulesNumber, 
+            sslPercentage=sslPercentage, 
+            cyclePercentage=cyclePercentage,
+            similarityPercentage=similarityPercentage
         )
 
 
@@ -294,10 +542,10 @@ async def perform_queries():
         """ 
         TODO: verificar o que se deseja registrar.
             - Quantidade e tamanho médio dos argumentos gerados
-                - Uso de memória
+                - Uso de memória  --- Ok (quantidade de argumentos incluindo subargumentos)
                 - Verificação da existência de argumentos repetidos ou muito similares
-            - Tempo de execução médio
-            - Quantidade de mensagens trocadas entre os agentes
+            - Tempo de execução médio -- Ok
+            - Quantidade de mensagens trocadas entre os agentes  -- Ok
 
         """
 
@@ -311,37 +559,103 @@ async def perform_queries():
         #     rulesNumber=300, 
         #     sslPercentage=0.8, 
         #     cyclePercentage=0,
-        #     similarityPercentage=0.1
+        #     similarityPercentage=0.1200
         # )
-
-        print_system(tester.create_system())
+        tester.create_system()
+        print_system(tester.system)
                 
         print("\n\n\n--------query\n\n")
-        ans = None
+        ans, query_focus = None, None
+        start_time = time.time()
         try:
-            ans = await tester.do_random_query(3)
+            ans, query_focus = await tester.do_random_query(3)
         except Exception as exc:
             traceback.print_exc()
             logger.error(exc)
+            query_focus = exc.args[0]
+
+        end_time = time.time()
+
+        exec_times.append(end_time-start_time)
 
 
-        results.append({"system": tester.system, "answer": ans})
-        logger.info("Answer: "+str(ans))
+        # results.append({"system": tester.system, "answer": ans})
 
-
-    amount_arguments_per_ans = []
-    for res in results:
-        sum_ = 0
-        for agent in res["system"].agents.values():
+        agents = tester.system.agents.values()
+        all_args = []
+        for agent in agents:
             for cached in agent.cache.values():
                 if cached.done():
-                    sum_ += len(cached.result()[0]) + len(cached.result()[1]) 
+                    all_args += [str(arg) for arg in cached.result()[0]]
+                    all_args += [str(arg) for arg in cached.result()[1]]
         
-        amount_arguments_per_ans.append(sum_)
+
+        if all_args:
+            print("tem args")
+
+        with open('results.pkl', 'ab') as f:
+            pickle.dump(
+                {
+                    "all_args": all_args, 
+                    "query_focus": str(query_focus),
+                    # "tv": ans.tv_p,
+                    "system": str(tester.system),
+                    "similarities": sim_to_str(tester.similarity_between_literals),
+                    "messages_count": tester.system.amount_messages_exchanged,
+                    "max_count":  tester.system.max_arguments_times
+                }, 
+                f)
+
+        logger.info("Answer: "+str(ans))
+
+    logger.warning("Config:")
+
+    logger.warning("Times Run: "+str(timesRun))
+    logger.warning("Agents Number: "+str(agentsNumber))
+    logger.warning("Literals Number: "+str(literalsNumber))
+    logger.warning("Rules Number: "+str(rulesNumber))
+    logger.warning("ssl Percentage: "+str(sslPercentage))
+    logger.warning("cycle Percentage: "+str(cyclePercentage))
+    logger.warning("similarity Percentage: "+str(similarityPercentage))
+    
 
 
-    times_max_arguments_achieved = sum(res["system"].max_arguments_times for res in results)
-    logger.warning("Times in which max number of arguments was achieved: "+str(times_max_arguments_achieved))
+    # results = results_loader()
+
+    amount_arguments_per_ans = []
+    messages_exchanged_per_ans = []
+    times_max_arguments_achieved = []
+    query_focuses_per_ans = []
+    tvs_per_ans = []
+    max_args_len = -1
+    max_args = []
+    max_system = None
+    max_similarities = None
+    max_query_focus = None
+    with open('results.pkl', 'rb') as f:
+        for k in range(timesRun):
+            
+            res = pickle.load(f)
+
+            total_args = len(res["all_args"])
+
+            if total_args >= max_args_len:
+                max_args_len = total_args
+                max_args = res["all_args"]
+                max_system = res["system"]
+                max_similarities = res["similarities"]
+                max_query_focus = res["query_focus"]
+
+            
+            amount_arguments_per_ans.append(total_args)
+
+            messages_exchanged_per_ans.append(res["messages_count"])
+            times_max_arguments_achieved.append(res["max_count"])
+            query_focuses_per_ans.append(res["query_focus"])
+            # tvs_per_ans.append(res["tv"])
+
+    logger.warning("Times in which max number of arguments was achieved: "+str(sum(times_max_arguments_achieved)))
+
 
     # distinct_arguments_per_ans = [set(arg for arg in res["answer"].args_p.union(res["answer"].args_not_p)) for res in results]
 
@@ -357,14 +671,26 @@ async def perform_queries():
 
     # amount_arguments_per_ans = [len(subargs_set) for subargs_set in distinct_args_and_subargs_per_ans]
 
-    max_amount_args = max(amount_arguments_per_ans)    
-    max_index = amount_arguments_per_ans.index(max_amount_args)
-    max_res = results[max_index]
 
-    # logger.warn("Amount of arguments of the greatest case:" + str(len(max_ans.args_p.union(max_ans.args_not_p))))
-    logger.warn("Arguments of the greatest case:")
-    for arg in [ag.cache for ag in max_res["system"].agents.values()]:
-        logger.warn(arg)
+    # logger.warning("Amount of arguments of the greatest case:" + str(len(max_ans.args_p.union(max_ans.args_not_p))))
+    
+    
+    logger.warning("System of the greatest case:")
+    logger.warning(max_system)
+
+    logger.warning("Query focus of the greatest case:")
+    logger.warning(max_query_focus)
+
+    logger.warning("Similarities of the greatest case:")
+    logger.warning(max_similarities)
+
+    
+    logger.warning("Arguments of the greatest case:")
+    for arg in max_args:
+        logger.warning(arg)
+
+
+        
 
     logger.info("Statistics for amount of arguments in answers:")
 
@@ -372,10 +698,23 @@ async def perform_queries():
     # logger.info("Min size of arguments: "+ str(min(arg_sizes)))
     # logger.info("Max size of arguments: "+ str(max(arg_sizes)))
 
+    logger.warning("Amounts of arguments ordered from greatest to smallest: "+str(sorted(amount_arguments_per_ans, reverse=True)))
+
     arg_sizes_array = np.asarray(amount_arguments_per_ans)
     df_describe = pd.DataFrame(arg_sizes_array)
-    logger.warn(df_describe.describe().astype(str))
+    logger.warning("Amount of arguments generated statistics:")
+    logger.warning(df_describe.describe().astype(str))
 
+    arg_sizes_array = np.asarray(messages_exchanged_per_ans)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Amount of messages exchanged statistics:")
+    logger.warning(df_describe.describe().astype(str))
+
+
+    arg_sizes_array = np.asarray(exec_times)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Times of execution statistics:")
+    logger.warning(df_describe.describe().astype(str))
     # print(ans.tv_p)
     # logger.info(str(ans.tv_p)+"\n")
 

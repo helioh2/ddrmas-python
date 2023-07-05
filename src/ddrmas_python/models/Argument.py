@@ -94,7 +94,7 @@ class Argument:
     
 
     def prems(self):
-        return (subarg.conclusion for subarg in self.proper_subargs)
+        return [subarg.conclusion for subarg in self.proper_subargs()]
 
     def size(self) -> int:
         return 1 + len(self.prems())

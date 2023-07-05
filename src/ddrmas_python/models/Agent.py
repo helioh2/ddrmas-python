@@ -45,11 +45,11 @@ class Agent:
     def __hash__(self) -> int:
         return hash(self.name)
 
-    # @cache.memoize(except_args=["hist"])
+
+
     async def query(
         self, p: LLiteral, focus: QueryFocus, hist: list[LLiteral]
     ) -> Answer:
-        
         
         logger.info(f"""Agent {self.name} starting execution of Query {focus.name},
           p={str(p)}, hist=[{",".join([str(q) for q in hist])}]:\n
@@ -157,7 +157,6 @@ class Agent:
 
         logger.info(f"Agent {self.name} achou answer para {p}: {ans}")
 
-
         return ans
     
 
@@ -200,7 +199,7 @@ class Agent:
     def find_similar_lliterals(self, p: LLiteral, extended_kb: set[Rule]):
         rlits = set()
         for rule in extended_kb:
-            if self.system.similar_enough(rule.head, p):
+            if self.system.similar_enough(rule.head.literal, p.literal):
                 rlits.add(rule.head)
 
         return rlits
@@ -209,7 +208,7 @@ class Agent:
         args_p = set()
         new_rlits = set()
         for i, p1 in enumerate(rlits):
-            if not {p1, p1.negated()}.isdisjoint(hist):
+            if not {p1.literal, p1.negated().literal}.isdisjoint(hist):
                 fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True), strength=1.)
                 args_p.add(fall_arg_p1)
             else:
@@ -289,7 +288,7 @@ class Agent:
 
                     if not has_focus_rule_for_q:
                         logger.info(f"LOGO APÓS queryagents, len(args_q) = {len(args_q)}")
-                        has_perfect_strength = any(arg.strength==1 for arg in args_q)
+                        has_perfect_strength = any(not arg.is_fallacious() and arg.strength==1 for arg in args_q)
                         if not args_q or not has_perfect_strength:
                             all_agents_except_self = set(self.system.agents.values()).difference({self})
                             args_q.update(await self.query_agents(all_agents_except_self, q, focus, hist_p1))
@@ -314,9 +313,12 @@ class Agent:
             return possible_subargs_r, map_arg_to_q
 
         args_p1 = set()
-        hist_p1 = hist + [p1]
+        hist_p1 = hist + [p1.literal]
 
-        rules_with_head_p1 = {rule for rule in extended_kb if rule.head == p1}
+        rules_with_head_p1 = {rule for rule in extended_kb if rule.head == p1 and not rule.body}
+        if not rules_with_head_p1:  #priorizar regras sem corpo
+            rules_with_head_p1 = {rule for rule in extended_kb if rule.head == p1}
+
         for rule in rules_with_head_p1:
 
             logger.info(f"Processando regra: {rule}")
@@ -370,7 +372,7 @@ class Agent:
                     arg_q1: Argument = arg_q1
                     q1 = arg_q1.conclusion.label
 
-                    similarity = self.system.sim_function(q, q1)
+                    similarity = self.system.sim_function(q.literal, q1.literal)
 
                     if q1.definer != self or similarity < 1:  ## necessita instanciação !!
                         q_inst = ILLiteral(q1.definer, q1.literal, similarity)
@@ -392,8 +394,8 @@ class Agent:
             traceback.print_exc()
             logger.error(exc)
             logger.error("len(possible_subargs_r)"+str(len(possible_subargs_r)))
-            for arg in possible_subargs_r:
-                logger.error(str(arg))
+            # for arg in possible_subargs_r:
+            #     logger.error(str(arg))
 
             raise exc
         return args_r
@@ -411,6 +413,13 @@ class Agent:
             answer = await agent.query(q, focus, hist_p1)
             args_q.update(answer.args_p)
 
+            if self != agent:
+                self.system.amount_messages_exchanged += 2
+                answer
+                self.system.size_messages_answers.append(
+                    sum(arg.size() for arg in answer.args_p.union(answer.args_not_p))
+                    )
+            
         return args_q
 
     def compare_def_args(
