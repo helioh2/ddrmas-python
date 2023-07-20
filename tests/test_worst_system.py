@@ -7,6 +7,8 @@ import random
 import string
 import time
 
+import cProfile
+import pstats
 
 import pandas as pd
 import numpy as np
@@ -277,81 +279,71 @@ async def perform_queries():
 
     literalsNumber=100
 
-    for k in range(timesRun):
-
-        # tester = RandomDDRMASTester(
-        #     agentsNumber=3, 
-        #     literalsNumber=10, 
-        #     rulesNumber=10, 
-        #     sslPercentage=0.8, 
-        #     cyclePercentage=0,
-        #     similarityPercentage=0.1
-        # )
 
 
-        tester = DDRMASTester(
-            literalsNumber=literalsNumber
-        )
+    tester = DDRMASTester(
+        literalsNumber=literalsNumber
+    )
 
 
-        # signal.signal(signal.SIGALRM, handler)
+    # signal.signal(signal.SIGALRM, handler)
 
-        # signal.alarm(15)
+    # signal.alarm(15)
 
-        # tester = RandomDDRMASTester(
-        #     agentsNumber=20, 
-        #     literalsNumber=100, 
-        #     rulesNumber=300, 
-        #     sslPercentage=0.8, 
-        #     cyclePercentage=0,
-        #     similarityPercentage=0.1200
-        # )
-        tester.create_system()
-        print_system(tester.system)
-                
-        print("\n\n\n--------query\n\n")
-        ans, query_focus = None, None
-        start_time = time.time()
-        try:
-            ans, query_focus = await tester.do_query(focus_kb_side=0)
-        except Exception as exc:
-            traceback.print_exc()
-            logger.error(exc)
-            query_focus = exc.args[0]
+    # tester = RandomDDRMASTester(
+    #     agentsNumber=20, 
+    #     literalsNumber=100, 
+    #     rulesNumber=300, 
+    #     sslPercentage=0.8, 
+    #     cyclePercentage=0,
+    #     similarityPercentage=0.1200
+    # )
+    tester.create_system()
+    print_system(tester.system)
+            
+    print("\n\n\n--------query\n\n")
+    ans, query_focus = None, None
+    start_time = time.time()
+    try:
+        ans, query_focus = await tester.do_query(focus_kb_side=0)
+    except Exception as exc:
+        traceback.print_exc()
+        logger.error(exc)
+        query_focus = exc.args[0]
 
-        end_time = time.time()
+    end_time = time.time()
 
-        exec_times.append(end_time-start_time)
+    exec_times.append(end_time-start_time)
 
 
-        # results.append({"system": tester.system, "answer": ans})
+    # results.append({"system": tester.system, "answer": ans})
 
-        agents = tester.system.agents.values()
-        all_args = []
-        for agent in agents:
-            for cached in agent.cache.values():
-                if cached.done():
-                    all_args += [str(arg) for arg in cached.result()[0]]
-                    all_args += [str(arg) for arg in cached.result()[1]]
-        
+    agents = tester.system.agents.values()
+    all_args = []
+    for agent in agents:
+        for cached in agent.cache_args.values():
+            if cached.done():
+                all_args += [arg for arg in cached.result()[0]]
+                all_args += [arg for arg in cached.result()[1]]
+    
 
-        if all_args:
-            print("tem args")
+    if all_args:
+        print("tem args")
 
-        with open('results.pkl', 'ab') as f:
-            pickle.dump(
-                {
-                    # "all_args": all_args, 
-                    "query_focus": str(query_focus),
-                    # "tv": ans.tv_p,
-                    "system": str(tester.system),
-                    "similarities": sim_to_str(tester.similarity_between_literals),
-                    "messages_count": tester.system.amount_messages_exchanged,
-                    "max_count":  tester.system.max_arguments_times
-                }, 
-                f)
+    # with open('results.pkl', 'ab') as f:
+    #     pickle.dump(
+    #         {
+    #             # "all_args": all_args, 
+    #             "query_focus": str(query_focus),
+    #             # "tv": ans.tv_p,
+    #             "system": str(tester.system),
+    #             "similarities": sim_to_str(tester.similarity_between_literals),
+    #             "messages_count": tester.system.amount_messages_exchanged,
+    #             "max_count":  tester.system.max_arguments_times
+    #         }, 
+    #         f)
 
-        logger.info("Answer: "+str(ans))
+    # logger.info("Answer: "+str(ans))
 
     logger.warning("Config:")
 
@@ -362,35 +354,41 @@ async def perform_queries():
     messages_exchanged_per_ans = []
     times_max_arguments_achieved = []
     query_focuses_per_ans = []
+    avg_sizes_messages_answers = []
+    max_sizes_messages_answers = []
     tvs_per_ans = []
     max_args_len = 0
     max_args = []
     max_system = None
     max_similarities = None
     max_query_focus = None
-    with open('results.pkl', 'rb') as f:
-        for k in range(timesRun):
             
-            res = pickle.load(f)
+          
 
-            total_args = len(res["all_args"])
+    total_args = len(all_args)
 
-            if total_args > max_args_len:
-                max_args_len = total_args
-                max_args = res["all_args"]
-                max_system = res["system"]
-                max_similarities = res["similarities"]
-                max_query_focus = res["query_focus"]
+    
+    max_args = total_args
+    max_system = str(tester.system)
+    max_similarities = sim_to_str(tester.similarity_between_literals)
+    max_query_focus = str(query_focus)
 
-            
-            amount_arguments_per_ans.append(total_args)
+    
+    amount_arguments_per_ans.append(total_args)
 
-            messages_exchanged_per_ans.append(res["messages_count"])
-            times_max_arguments_achieved.append(res["max_count"])
-            query_focuses_per_ans.append(res["query_focus"])
-            # tvs_per_ans.append(res["tv"])
+    messages_exchanged_per_ans.append(tester.system.amount_messages_exchanged)
+    times_max_arguments_achieved.append(tester.system.max_arguments_times)
+    query_focuses_per_ans.append(str(query_focus))
 
-    logger.warning("Times in which max number of arguments was achieved: "+str(sum(times_max_arguments_achieved)))
+    if not tester.system.size_messages_answers:
+        avg_sizes_messages_answers.append(0)
+        max_sizes_messages_answers.append(0)
+    else:
+        avg_sizes_messages_answers.append(sum(tester.system.size_messages_answers)/len(tester.system.size_messages_answers))
+        max_sizes_messages_answers.append(max(tester.system.size_messages_answers))
+    # tvs_per_ans.append(res["tv"])
+
+    # logger.warning("Times in which max number of arguments was achieved: "+str(sum(times_max_arguments_achieved)))
 
 
     # distinct_arguments_per_ans = [set(arg for arg in res["answer"].args_p.union(res["answer"].args_not_p)) for res in results]
@@ -434,7 +432,7 @@ async def perform_queries():
     # logger.info("Min size of arguments: "+ str(min(arg_sizes)))
     # logger.info("Max size of arguments: "+ str(max(arg_sizes)))
 
-    logger.warning("Amounts of arguments ordered from greatest to smallest: "+str(sorted(amount_arguments_per_ans, reverse=True)))
+    # logger.warning("Amounts of arguments ordered from greatest to smallest: "+str(sorted(amount_arguments_per_ans, reverse=True)))
 
     arg_sizes_array = np.asarray(amount_arguments_per_ans)
     df_describe = pd.DataFrame(arg_sizes_array)
@@ -455,6 +453,22 @@ async def perform_queries():
     # logger.info(str(ans.tv_p)+"\n")
 
 
+    arg_sizes_array = np.asarray(avg_sizes_messages_answers)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Average size of messages statistics:")
+    logger.warning(df_describe.describe().astype(str))
+
+    arg_sizes_array = np.asarray(max_sizes_messages_answers)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Max size of messages statistics:")
+    logger.warning(df_describe.describe().astype(str))
+
+# cProfile.run('asyncio.run(perform_queries())', 'results')
 asyncio.run(perform_queries())
+
+# with open('results.txt', 'w') as file:
+#     profile = pstats.Stats('results', stream=file)
+#     profile.print_stats()
+#     file.close()
 
     

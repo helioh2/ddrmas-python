@@ -145,7 +145,7 @@ def load_system_from_yaml_dict(data: dict) -> System:
     for sim in data["similarities"]:
         on_equal: list[str] = sim.split("=")
         # sim_value = int(on_equal[1].strip())
-        left_side_cleaned = on_equal[0].replace("theta", "").replace("(", "").replace(")", "").replace("['M']", "").strip()
+        left_side_cleaned = on_equal[0].replace("theta", "").replace("(M)", "").replace("(", "").replace(")", "").strip()
         on_comma = left_side_cleaned.split(",")
         lit1 = Literal(True, on_comma[0].strip(), ["M"])
         lit2 = Literal(True, on_comma[1].strip(), ["M"])

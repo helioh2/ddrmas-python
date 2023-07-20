@@ -196,14 +196,13 @@ class DDRMASTester:
         
             rule_pos_name = "r_" + definer_agent.name + str(agents_last_rule_numbers[definer_agent.name])
             agents_last_rule_numbers[definer_agent.name] += 1
-            rule_pos = Rule(rule_pos_name, head, body)
 
-            rule_neg_name = "r_" + definer_agent.name + str(agents_last_rule_numbers[definer_agent.name])
-            agents_last_rule_numbers[definer_agent.name] += 1
-            rule_neg = Rule(rule_neg_name, head_negated, body)
+            if j <= self.literalsNumber // 2:
+                rule = Rule(rule_pos_name, head, body)
+            else:
+                rule = Rule(rule_pos_name, head_negated, body)
 
-            definer_agent.kb.add(rule_pos)
-            definer_agent.kb.add(rule_neg)
+            definer_agent.kb.add(rule)
 
 
         for k in range(1, self.literalsNumber):
@@ -213,6 +212,7 @@ class DDRMASTester:
 
             rule_name = "r_" + definer_agent.name + str(agents_last_rule_numbers[definer_agent.name])
             agents_last_rule_numbers[definer_agent.name] += 1
+
             rule = Rule(rule_name, head, set())
 
             definer_agent.kb.add(rule)
@@ -305,7 +305,7 @@ async def perform_queries():
 
     timesRun = 1
 
-    literalsNumber=4
+    literalsNumber=100
 
     for k in range(timesRun):
 
@@ -359,7 +359,7 @@ async def perform_queries():
         agents = tester.system.agents.values()
         all_args = []
         for agent in agents:
-            for cached in agent.cache.values():
+            for cached in agent.cache_args.values():
                 if cached.done():
                     all_args += [str(arg) for arg in cached.result()[0]]
                     all_args += [str(arg) for arg in cached.result()[1]]

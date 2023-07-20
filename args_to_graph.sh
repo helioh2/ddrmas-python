@@ -1,0 +1,1 @@
+dot -Tsvg args.dot -o outfile.svg

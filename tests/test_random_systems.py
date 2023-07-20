@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from ddrmas_python.models.LLiteral import Sign
 from ddrmas_python.models.QueryFocus import QueryFocus
 from ddrmas_python.models.Rule import RuleType
-from ddrmas_python.models.Agent import Agent
+from ddrmas_python.models.Agent import Agent, MaxArgsExceededException
 from ddrmas_python.models.LLiteral import LLiteral
 from ddrmas_python.models.Literal import Literal
 from ddrmas_python.models.Rule import Rule
@@ -100,8 +100,9 @@ class RandomDDRMASTester:
     literalsNumber: int
     rulesNumber: int
     sslPercentage: float
-    cyclePercentage: float   ## TODO
+    hasCycles: bool
     similarityPercentage: float
+    maxBodySize: int
     similarity_function = lambda a, b: 1 if a==b or random.random() <= 0.1 else 0
     similarity_between_literals: dict = field(default_factory=dict)
     system: System = None
@@ -113,6 +114,8 @@ class RandomDDRMASTester:
     def create_system(self) -> System:
 
         self.system = System(sim_threshold=1)
+
+        self.cycles_count = 0
 
         self.system.agents = {}
         self.literals = []
@@ -143,7 +146,8 @@ class RandomDDRMASTester:
                                        self.literals + [lit.negated() for lit in self.literals]}
         
         pairs = set()
-        for i in range(int(len(self.literals)*self.similarityPercentage)):
+        max_combinations = int((math.factorial(len(self.literals))/(2*(math.factorial(len(self.literals)-2))))*self.similarityPercentage)
+        for i in range(max_combinations):
             lit1 = random.choice(self.literals)
             lit2 = random.choice(self.literals)
 
@@ -153,8 +157,8 @@ class RandomDDRMASTester:
 
             pairs.add((lit1, lit2))
 
-        #ex: 10 literais. 10% de similaridade = 1 par de literais
-        #ex: 100 literais. 10% de similaridade = 10 pares de literais (<=20 literais envolvidos?)
+        #ex: 10 literais. 45 combinações máximas. 10% de similaridade = 4 pares de literais
+        #ex: 10 literais. 45 combinações máximas. 100% de similaridade = 45 pares de literais
 
         for i in range(len(self.literals)):
             literal1 = self.literals[i]
@@ -189,18 +193,17 @@ class RandomDDRMASTester:
         body_length_count = 0
 
         agents_list = list(self.system.agents.values())
+        random.shuffle(agents_list)
         current_agent_index = 0
         k = 0
         while k < self.rulesNumber:
             definer_agent:Agent = agents_list[current_agent_index]
-            current_agent_index = (current_agent_index + 1) % len(agents_list)
             
             head_literal = random.choice(self.literals)
             head_literal_copy = Literal(True if random.randrange(0,2)==0 else False, head_literal.pred, head_literal.terms) 
             head_lliteral = LLiteral(definer_agent, head_literal_copy)
 
             body_length = body_length_count
-            body_length_count = (body_length_count + 1) % 3  #distribuição igual de regras com corpo de tamanho 0, 1 ou 2
             
             body_lliterals = []
             used_literals = {head_literal_copy}
@@ -230,40 +233,35 @@ class RandomDDRMASTester:
             rule = Rule(rule_name, head_lliteral, set(body_lliterals), RuleType.DEFEASIBLE)
 
             if rule in definer_agent.kb:
-                k -= 1
                 continue
+            
+            else:
 
-            rule, rules_to_remove = self.check_rule(definer_agent.kb, rule)
-            if rule:
+                rule, rules_to_remove = self.check_rule(definer_agent.kb, rule)
+
+                if not rule:
+                    continue
                 
                 will_add = True
                 for r in rules_to_remove:
                     if r == rule:
                         will_add = False
                         continue
-                    # hash_r = hash(r)
-                    # print(hash_r)
-                    # print(r)
-                    # for rule in definer_agent.kb:
-                    #     if rule.name == r.name:
-                    #         print("Removendo regra:", rule)
-                    #         print("Com hash:", hash(rule))
-                    #         break
                     definer_agent.kb.remove(r)
-                    body_length_count = len(r.body)
+                    # body_length_count = len(r.body)
                     k -= 1
-
+                    
                 if will_add:
                     definer_agent.kb.add(rule)
-                    # print("Inserindo regra:", rule)
-                    # print("Com hash:", hash(rule))
                 else:
-                    k -= 1
-            else:
-                k -= 1
-                body_length_count = (body_length_count - 1) % 3
+                    continue
+             
 
             k += 1
+            body_length_count = (body_length_count + 1) % (self.maxBodySize+1)  #distribuição igual de regras com corpo de tamanho 0, 1 ou 2
+            current_agent_index = (current_agent_index + 1) % len(agents_list)
+            if current_agent_index == 0:
+                random.shuffle(agents_list)
 
         logger.info(f"System:\n{self.system}")
         
@@ -282,20 +280,27 @@ class RandomDDRMASTester:
             Ex: r_a16: (a1, aa1['M']) <= (@, ac1['M']), (a1, ac1['M'])  // keep only (@, ac1['M'])
 
             """ 
+            # to_remove = set()
+            # for bm1 in new_rule.body:
+            #     for bm2 in new_rule.body:
+            #         if bm1 != bm2 and bm1.has_equivalent_positive_literal(bm2, self.system.sim_function, self.system.sim_threshold):
+            #             if bm1.definer == Sign.SCHEMATIC:
+            #                 to_remove.add(bm2)
+            #             elif bm2.definer == Sign.SCHEMATIC:
+            #                 to_remove.add(bm1)
+
+            # for bm in to_remove:
+            #     new_rule.body.remove(bm)
+
+            # return new_rule
+
             to_remove = set()
             for bm1 in new_rule.body:
                 for bm2 in new_rule.body:
-                    if bm1 != bm2 and bm1.has_equivalent_positive_literal(bm2, System.sim_function, System.sim_threshold):
-                        if bm1.definer == Sign.SCHEMATIC:
-                            to_remove.add(bm2)
-                        elif bm2.definer == Sign.SCHEMATIC:
-                            to_remove.add(bm1)
-
-            for bm in to_remove:
-                new_rule.body.remove(bm)
-
+                    if bm1 != bm2 and bm1.has_equivalent_positive_literal(bm2, self.system.sim_function, self.system.sim_threshold):
+                        return None
             return new_rule
-                        
+      
 
 
         def remove_more_specific_rule_when_general_exists(new_rule_aux: Rule):
@@ -306,6 +311,8 @@ class RandomDDRMASTester:
 
 
             """
+            if not new_rule_aux:
+                return None, set()
             mod_rule = Rule(name=new_rule_aux.name, head=new_rule_aux.head, type=new_rule_aux.type)
             for rule in kb:
                 if rule.head.literal == new_rule_aux.head.literal and len(rule.body) == len(new_rule_aux.body) and rule.type == new_rule_aux.type:
@@ -334,6 +341,8 @@ class RandomDDRMASTester:
             (a1, aa1['M']) <= (@, ~ab1['M']), (@, ac1['M']) //remove this
             (a1, aa1['M']) <= (@, ac1['M'])
             """
+            if not new_rule_aux:
+                return None, set()
             to_remove = set()
             for rule in kb:
                 if rule.head.literal == new_rule_aux.head.literal:
@@ -355,11 +364,14 @@ class RandomDDRMASTester:
                     
                     for bm in chain[-1].body:  # para cada membro do corpo do último da cadeia
 
-                        if rule_kb.head.equivalent_to(bm, System.sim_function, System.sim_threshold):  # se a cabeça da regra "bate" com o membro do corpo do último da cadeia
+                        if rule_kb.head.equivalent_to(bm, self.system.sim_function, self.system.sim_threshold):  # se a cabeça da regra "bate" com o membro do corpo do último da cadeia
+                             # achou regra de ligação (rule_kb)
                             for b in rule_kb.body:  # para cada membro do corpo da regra da kb
-                                if any(b.has_equivalent_positive_literal(rule.head, System.sim_function, System.sim_threshold) for rule in chain):  # se algum membro do corpo da regra da kb é equivalente à cabeça de alguma regra na cadeia
-                                    #ciclo encontrado
-                                    return True
+                                for rule in chain:
+                                    if b.has_equivalent_positive_literal(rule.head, self.system.sim_function, self.system.sim_threshold):
+                                        # se algum membro do corpo da regra da kb é equivalente à cabeça de alguma regra na cadeia
+                                        #ciclo encontrado
+                                        return True
 
                             res = has_cycle_backwards(kb.difference({rule_kb}), chain + (rule_kb,))
                             if res:  # encontrou ciclo em algum ponto
@@ -375,7 +387,11 @@ class RandomDDRMASTester:
                     for bm in rule_kb.body:  # para cada membro do corpo da regra da kb
 
                         if bm.equivalent_to(chain[-1].head, System.sim_function, System.sim_threshold):  # se a cabeça da última regra da cadeia "bate" com o membro do corpo da regra da kb
-                            for b in set().union(*[rule.body for rule in chain]):  # para cada membro do corpo das regras da cadeia
+                            # achou regra de ligação (rule_kb)
+                            chain_bodies = set()
+                            for rule in chain:
+                                chain_bodies.update(rule.body)
+                            for b in chain_bodies:  # para cada membro do corpo das regras da cadeia
                                 if b.has_equivalent_positive_literal(rule_kb.head, System.sim_function, System.sim_threshold):  # se algum membro do corpo das regras da cadeia "bate" com a cabeça da regra da kb
                                     #ciclo encontrado
                                     return True
@@ -388,16 +404,23 @@ class RandomDDRMASTester:
 
             if not new_rule_aux:
                 return None
-            max_cycles = int(self.rulesNumber * self.cyclePercentage)
+            
+            for bm in new_rule_aux.body:
+                if new_rule_aux.head.has_equivalent_positive_literal(bm, self.system.sim_function, self.system.sim_threshold):
+                    return None
+
+            if self.hasCycles:
+                return new_rule_aux
+            
+            # max_cycles = int(self.rulesNumber * self.cyclePercentage)
             
 
-            for bm in new_rule_aux.body:
-                if new_rule_aux.head.has_equivalent_positive_literal(bm, System.sim_function, System.sim_threshold):
-                    return None
+            
 
             # for rule in set().union(agent.kb for agent in self.system.agents.values()):
             #     ## check head with body of others:
 
+            
             global_kb = set()
             for agent in self.system.agents.values():
                 global_kb.update(agent.kb)
@@ -406,9 +429,7 @@ class RandomDDRMASTester:
                                     chain=(new_rule_aux,)) or
                 has_cycle_forward(global_kb,
                                  chain=(new_rule_aux,))):
-                if self.cycles_count >= max_cycles:
                     return None
-                self.cycles_count += 1
         
             return new_rule_aux
                 
@@ -436,7 +457,7 @@ class RandomDDRMASTester:
         for k in range(focus_kb_side):
 
             head_literal = random.choice(self.literals)
-            while literal == head_literal:
+            while literal == head_literal or head_literal in (r.head for r in focus_kb):
                 head_literal = random.choice(self.literals)
             head_lliteral = LLiteral(Sign.FOCUS, head_literal)
             
@@ -460,11 +481,11 @@ class RandomDDRMASTester:
         print(focus)
         logger.info("Query: "+str(focus)+"\n")
     
-        try:
-            ans = await emitter_agent.query(lliteral, focus, [])
-        except Exception as exc:
-            exc2 = Exception(focus)
-            raise exc2
+        # try:
+        ans = await emitter_agent.query(lliteral, focus, [])
+        # except Exception as exc:
+        #     exc2 = Exception(focus)
+        #     raise exc2
         
         return ans, focus
         # for arg in ans.args_p:
@@ -489,6 +510,26 @@ def handler(signum, frame):
 #             yield pickle.load(f)
 
 
+def complete_dot(string: str):
+    antes = '''
+        strict digraph g {
+        fontname="Helvetica,Arial,sans-serif"
+        node [fontname="Helvetica,Arial,sans-serif"]
+        edge [fontname="Helvetica,Arial,sans-serif"]
+        graph [
+        rankdir = "UD"
+        ];
+        node [
+        fontsize = "16"
+        shape = "ellipse"
+        ];
+        edge [
+        ];\n
+        '''
+    
+    return antes + string + "}"
+
+
 async def perform_queries():
     
     results = []
@@ -507,14 +548,17 @@ async def perform_queries():
     if os.path.isfile("results.pkl"):
         os.remove("results.pkl")
 
-    timesRun = 10
+    timesRun = 1000
+    actualTimesRun = 0
 
-    agentsNumber=5
-    literalsNumber=10
-    rulesNumber=20
-    sslPercentage=0.8
-    cyclePercentage=0
+    agentsNumber=20 
+    literalsNumber=20
+    rulesNumber=50
+    sslPercentage=1
+    hasCycles=True
     similarityPercentage=0.1
+    maxBodySize=3
+    focusKbSize=3
 
     for k in range(timesRun):
 
@@ -533,8 +577,9 @@ async def perform_queries():
             literalsNumber=literalsNumber, 
             rulesNumber=rulesNumber, 
             sslPercentage=sslPercentage, 
-            cyclePercentage=cyclePercentage,
-            similarityPercentage=similarityPercentage
+            hasCycles=hasCycles,
+            similarityPercentage=similarityPercentage,
+            maxBodySize=maxBodySize
         )
 
 
@@ -568,45 +613,70 @@ async def perform_queries():
         ans, query_focus = None, None
         start_time = time.time()
         try:
-            ans, query_focus = await tester.do_random_query(3)
+            ans, query_focus = await tester.do_random_query(focusKbSize)
+        except MaxArgsExceededException as exc:
+            traceback.print_exc()
+            # logger.error(exc)
+            query_focus = exc.query_focus
+            continue
+            # args = exc.args
+            
+            # logger.warning("System:")
+            # logger.warning(str(tester.system))
+            # logger.warning(str(query_focus))
+            # for arg in args:
+            #     logger.warning(str(arg))
+
+            # with open("args.dot", "w") as f:
+            #     f.write(complete_dot(str("".join(args))))
+            
+            # return
+
         except Exception as exc:
             traceback.print_exc()
             logger.error(exc)
             query_focus = exc.args[0]
+            continue
 
         end_time = time.time()
 
-        exec_times.append(end_time-start_time)
+        
 
 
         # results.append({"system": tester.system, "answer": ans})
 
         agents = tester.system.agents.values()
-        all_args = []
+        all_args = set()
         for agent in agents:
-            for cached in agent.cache.values():
+            for cached in agent.cache_args.values():
                 if cached.done():
-                    all_args += [str(arg) for arg in cached.result()[0]]
-                    all_args += [str(arg) for arg in cached.result()[1]]
+                    all_args.update([arg for arg in cached.result()[0]])
+                    all_args.update([arg for arg in cached.result()[1]])
         
 
         if all_args:
             print("tem args")
+            exec_times.append(end_time-start_time)
 
-        with open('results.pkl', 'ab') as f:
-            pickle.dump(
-                {
-                    "all_args": all_args, 
-                    "query_focus": str(query_focus),
-                    # "tv": ans.tv_p,
-                    "system": str(tester.system),
-                    "similarities": sim_to_str(tester.similarity_between_literals),
-                    "messages_count": tester.system.amount_messages_exchanged,
-                    "max_count":  tester.system.max_arguments_times
-                }, 
-                f)
 
-        logger.info("Answer: "+str(ans))
+            with open('results.pkl', 'ab') as f:
+                pickle.dump(
+                    {
+                        # "all_args": [arg.to_graph() for arg in all_args], 
+                        "len(all_args)":str(len(all_args)),
+                        "query_focus": str(query_focus),
+                        "sizes_messages": tester.system.size_messages_answers,
+                        # "tv": ans.tv_p,
+                        "system": str(tester.system),
+                        "similarities": sim_to_str(tester.similarity_between_literals),
+                        "messages_count": tester.system.amount_messages_exchanged,
+                        "max_count":  tester.system.max_arguments_times
+                    }, 
+                    f)
+                actualTimesRun += 1
+
+        # logger.info("Answer: "+str(ans))
+        # all_args = set()
 
     logger.warning("Config:")
 
@@ -615,7 +685,7 @@ async def perform_queries():
     logger.warning("Literals Number: "+str(literalsNumber))
     logger.warning("Rules Number: "+str(rulesNumber))
     logger.warning("ssl Percentage: "+str(sslPercentage))
-    logger.warning("cycle Percentage: "+str(cyclePercentage))
+    logger.warning("has cycles: "+str(hasCycles))
     logger.warning("similarity Percentage: "+str(similarityPercentage))
     
 
@@ -625,6 +695,8 @@ async def perform_queries():
     amount_arguments_per_ans = []
     messages_exchanged_per_ans = []
     times_max_arguments_achieved = []
+    avg_sizes_messages_answers = []
+    max_sizes_messages_answers = []
     query_focuses_per_ans = []
     tvs_per_ans = []
     max_args_len = -1
@@ -633,15 +705,20 @@ async def perform_queries():
     max_similarities = None
     max_query_focus = None
     with open('results.pkl', 'rb') as f:
-        for k in range(timesRun):
+        for k in range(actualTimesRun):
             
             res = pickle.load(f)
 
-            total_args = len(res["all_args"])
+            total_args = int(res["len(all_args)"])
+            # total_args = len(res["all_args"])
+
+            if total_args == 0:  ## IGNORANDO QUANDO NAO HA ARGUMENTOS
+                continue
 
             if total_args >= max_args_len:
                 max_args_len = total_args
-                max_args = res["all_args"]
+                if "all_args" in res.keys():
+                    max_args = res["all_args"]
                 max_system = res["system"]
                 max_similarities = res["similarities"]
                 max_query_focus = res["query_focus"]
@@ -652,6 +729,12 @@ async def perform_queries():
             messages_exchanged_per_ans.append(res["messages_count"])
             times_max_arguments_achieved.append(res["max_count"])
             query_focuses_per_ans.append(res["query_focus"])
+            if not res["sizes_messages"]:
+                avg_sizes_messages_answers.append(0)
+                max_sizes_messages_answers.append(0)
+            else:
+                avg_sizes_messages_answers.append(sum(res["sizes_messages"])/len(res["sizes_messages"]))
+                max_sizes_messages_answers.append(max(res["sizes_messages"]))
             # tvs_per_ans.append(res["tv"])
 
     logger.warning("Times in which max number of arguments was achieved: "+str(sum(times_max_arguments_achieved)))
@@ -685,10 +768,13 @@ async def perform_queries():
     logger.warning(max_similarities)
 
     
-    logger.warning("Arguments of the greatest case:")
-    for arg in max_args:
-        logger.warning(arg)
+    # logger.warning("Arguments of the greatest case:")
+    # for arg in max_args:
+    #     logger.warning(arg)
 
+    if max_args:
+        with open("args.dot", "w") as f:
+            f.write(complete_dot(str("".join(arg.to_graph() for arg in max_args))))
 
         
 
@@ -718,6 +804,16 @@ async def perform_queries():
     # print(ans.tv_p)
     # logger.info(str(ans.tv_p)+"\n")
 
+
+    arg_sizes_array = np.asarray(avg_sizes_messages_answers)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Average size of messages statistics:")
+    logger.warning(df_describe.describe().astype(str))
+
+    arg_sizes_array = np.asarray(max_sizes_messages_answers)
+    df_describe = pd.DataFrame(arg_sizes_array)
+    logger.warning("Max size of messages statistics:")
+    logger.warning(df_describe.describe().astype(str))
 
 asyncio.run(perform_queries())
 

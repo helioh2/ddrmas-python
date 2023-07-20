@@ -6,6 +6,7 @@ from threading import Lock
 from uuid import UUID, uuid4
 from ddrmas_python.models import LLiteral
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
+import functools
 
 
 class TLabel(Enum):
@@ -45,6 +46,7 @@ class Argument:
         return (self.conclusion.fallacious 
             or any(subarg.is_fallacious() for subarg in self.proper_subargs()))
 
+    # @functools.cache
     def proper_subargs(self) -> set[Argument]:
         """
         TODO: pensar em colocar subargs numa cache (lista) para rápido acesso
@@ -129,6 +131,21 @@ class Argument:
             str_ += str(arg)
 
         return str_ 
+    
+
+    def to_graph(self) -> str:
+        res = '"'+self.name+'" [\n'
+        res += f'label = "{str(self.conclusion)}"\n'
+        res += "];\n"
+        
+        for child in self.children:
+            res += child.to_graph()+"\n"
+            res += f'"{self.name}" -> "{child.name}";\n'
+
+        
+        return res
+        
+        
 
     def __repr__(self) -> str:
         return str(self)

@@ -17,6 +17,7 @@ except ImportError:
 
 from ddrmas_python.utils.base_logger import logger
 
+
 @dataclass
 class System():
     """
@@ -24,7 +25,7 @@ class System():
     """
     name: str = "default"
     agents: dict[str, Agent] = field(default_factory=dict)
-    query_focuses: list[QueryFocus] = field(default_factory=list)
+    query_focuses: set[QueryFocus] = field(default_factory=set)
     sim_function: Callable[[Literal, Literal], float] = lambda p, q: 1. if p == q else 0.
     sim_threshold: float = 1.
     MAX_ARGUMENTS_NUMBER_PER_QUERY: int = 5000
@@ -102,6 +103,16 @@ class System():
                     literals.add(bm.literal.as_positive())
 
         return literals
+    
+
+    def all_args_in_cache(self):
+        all_args = []
+        for agent in self.agents.values():
+            for cached in agent.cache_args.values():
+                if cached.done():
+                    all_args += [arg.to_graph() for arg in cached.result()[0]]
+                    all_args += [arg.to_graph() for arg in cached.result()[1]]
+        return all_args
     
     # @property
     # def vocabulary_llits(self):

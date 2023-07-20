@@ -8,6 +8,11 @@
 *.orig
 *.log
 *.pot
+*.png
+*.svg
+*.dot
+*.pkl
+*.pstats
 __pycache__/*
 .cache/*
 .*.swp
@@ -52,3 +57,6 @@ MANIFEST
 .venv*/
 .conda*/
 .python-version
+args.dot
+.gitignore
+myLog.profile

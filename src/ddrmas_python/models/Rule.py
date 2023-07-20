@@ -39,6 +39,9 @@ class Rule:
         str_ += "; ".join(str(bm) for bm in self.body) 
         return str_
     
+    def __repr__(self) -> str:
+        return str(self)
+    
     def __hash__(self) -> int:
         return hash(str(self))
     

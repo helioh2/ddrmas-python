@@ -26,6 +26,15 @@ from ddrmas_python.utils.base_logger import logger
 
 if TYPE_CHECKING:
     from ddrmas_python.models.System import System
+    
+
+
+class MaxArgsExceededException(Exception):
+
+    def __init__(self, query_focus, args):
+        self.query_focus = query_focus
+        self.args = args
+
 
 
 @dataclass
@@ -39,7 +48,9 @@ class Agent:
     kb: set[Rule] = field(default_factory=set)
     trust: dict[Agent, float] = field(default_factory=dict)
     extended_kbs: dict[str, set[Rule]] = field(default_factory=dict)
-    cache: dict[tuple(LLiteral, QueryFocus), asyncio.Future] = field(default_factory=dict)
+    cache_args: dict[tuple(LLiteral, QueryFocus), asyncio.Future] = field(default_factory=dict)
+    cache_answers: dict[tuple(LLiteral, QueryFocus), asyncio.Future] = field(default_factory=dict)
+    cache_fall: dict[LLiteral, Argument] = field(default_factory=dict)
 
 
     def __hash__(self) -> int:
@@ -54,6 +65,16 @@ class Agent:
         logger.info(f"""Agent {self.name} starting execution of Query {focus.name},
           p={str(p)}, hist=[{",".join([str(q) for q in hist])}]:\n
                         """)
+
+        # if (p, focus) in self.cache_args.keys():
+        #     logger.info(f"ESPERANDO GERACAO DE RESPOSTA PARA p={p}")
+        #     ans = await self.cache_answers[(p, focus)]
+        #     return ans
+        
+        # loop = asyncio.get_running_loop()
+        # self.cache_answers[(p, focus)] = loop.create_future()
+
+        self.system.query_focuses.add(focus)
 
         args_p = set()
         args_not_p = set()
@@ -91,14 +112,14 @@ class Agent:
             args_not_p1 = set()
             has_strict_answer_p1 = False
 
-            if (positive_p1, focus) in self.cache.keys():
+            if (positive_p1, focus) in self.cache_args.keys():
                 logger.info(f"ESPERANDO GERACAO DE ARGUMENTO PARA p1={positive_p1} e not p1")
                 args_p1, args_not_p1, tv_p1 = await self.get_cached_args(
                     focus, p1, positive_p1
                     )
             else:
                 loop = asyncio.get_running_loop()
-                self.cache[(positive_p1, focus)] = loop.create_future()
+                self.cache_args[(positive_p1, focus)] = loop.create_future()
 
                 local_answer_p1 = await self.local_ans(p1, extended_kb)
                 if local_answer_p1["tv"] == True:
@@ -157,6 +178,8 @@ class Agent:
 
         logger.info(f"Agent {self.name} achou answer para {p}: {ans}")
 
+        # self.cache_answers[(p, focus)].set_result(ans)
+
         return ans
     
 
@@ -172,13 +195,13 @@ class Agent:
             args_positive_p1 = args_not_p1
             args_negative_p1 = args_p1
                 
-        self.cache[(positive_p1, focus)].set_result(
+        self.cache_args[(positive_p1, focus)].set_result(
                     (args_positive_p1, args_negative_p1, tv_p1)
                     )
 
     async def get_cached_args(self, focus, p1, positive_p1):
         args_positive_p1, args_negative_p1, tv_p1 = \
-                    await self.cache[(positive_p1, focus)]
+                    await self.cache_args[(positive_p1, focus)]
                 
         if p1 == positive_p1:
             args_p1 = args_positive_p1
@@ -209,7 +232,11 @@ class Agent:
         new_rlits = set()
         for i, p1 in enumerate(rlits):
             if not {p1.literal, p1.negated().literal}.isdisjoint(hist):
-                fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True), strength=1.)
+                if p1 in self.cache_fall.keys():
+                    fall_arg_p1 = self.cache_fall[p1]
+                else:
+                    fall_arg_p1 = Argument(ArgNodeLabel(p1, fallacious=True), strength=1.)
+                    self.cache_fall[p1] = fall_arg_p1
                 args_p.add(fall_arg_p1)
             else:
                 new_rlits.add(p1)
@@ -359,10 +386,10 @@ class Agent:
             for args_set in possible_subargs_r:
                 amount_args_resultant *= len(args_set) 
 
-            amount_args_in_cache = sum(len(cached.result()[0]) + len(cached.result()[1]) for cached in self.cache.values() if cached.done())
+            amount_args_in_cache = sum(len(cached.result()[0]) + len(cached.result()[1]) for cached in self.cache_args.values() if cached.done())
             if amount_args_resultant + amount_args_in_cache > self.system.MAX_ARGUMENTS_NUMBER_PER_QUERY:
                 self.system.max_arguments_times += 1
-                raise Exception("Amount of arguments exceeded") 
+                raise MaxArgsExceededException(list(self.system.query_focuses)[0], []) 
             
             for subargs_combinations in itertools.product(*possible_subargs_r):
                 arg_p1 = Argument(ArgNodeLabel(p1))
@@ -415,10 +442,14 @@ class Agent:
 
             if self != agent:
                 self.system.amount_messages_exchanged += 2
-                answer
-                self.system.size_messages_answers.append(
-                    sum(arg.size() for arg in answer.args_p.union(answer.args_not_p))
-                    )
+
+                all_args = set()
+                for arg in answer.args_p.union(answer.args_not_p):
+                    all_args.add(arg)
+                    for sub_arg in arg.proper_subargs():
+                        all_args.add(sub_arg)
+
+                self.system.size_messages_answers.append(len(all_args))
             
         return args_q
 

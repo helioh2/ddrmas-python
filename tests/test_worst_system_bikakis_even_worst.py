@@ -348,7 +348,7 @@ async def perform_queries():
         agents = tester.system.agents.values()
         all_args = []
         for agent in agents:
-            for cached in agent.cache.values():
+            for cached in agent.cache_args.values():
                 if cached.done():
                     all_args += [str(arg) for arg in cached.result()[0]]
                     all_args += [str(arg) for arg in cached.result()[1]]
