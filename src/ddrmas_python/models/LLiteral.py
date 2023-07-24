@@ -53,4 +53,6 @@ class LLiteral:
     def __eq__(self, __value: object) -> bool:
         return hash(self) == hash(__value)
     
+    def strength(self, agent: Agent) -> float:
+        return 1.
 

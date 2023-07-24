@@ -31,7 +31,9 @@ class System():
     MAX_ARGUMENTS_NUMBER_PER_QUERY: int = 5000
     max_arguments_times = 0
     amount_messages_exchanged = 0
+    max_argument_height: int = 10000000
     size_messages_answers: list = field(default_factory=list)
+    
 
 
     def __post_init__(self):

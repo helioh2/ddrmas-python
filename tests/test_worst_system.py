@@ -277,7 +277,7 @@ async def perform_queries():
 
     timesRun = 1
 
-    literalsNumber=100
+    literalsNumber=20
 
 
 

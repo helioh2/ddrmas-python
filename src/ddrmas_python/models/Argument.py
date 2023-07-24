@@ -31,6 +31,7 @@ class Argument:
     justified: bool = False
     rejected: bool = False
     strength: float = 0
+    height: int = 1
 
         
     @staticmethod
@@ -42,15 +43,14 @@ class Argument:
         self.type = ArgType.STRICT
         return self
 
+    @functools.cache
     def is_fallacious(self) -> bool:
         return (self.conclusion.fallacious 
             or any(subarg.is_fallacious() for subarg in self.proper_subargs()))
 
-    # @functools.cache
+    @functools.cache
     def proper_subargs(self) -> set[Argument]:
-        """
-        TODO: pensar em colocar subargs numa cache (lista) para rápido acesso
-        """
+
         subargs = set()
 
         for subarg in self.children:

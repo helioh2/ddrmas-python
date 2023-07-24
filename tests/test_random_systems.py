@@ -86,9 +86,9 @@ def sim_to_str(sim_dict):
 
 
 def print_similarities(sim_dict):
-    print("Similarities: ")
+    # print("Similarities: ")
     logger.info("Similarities: ")
-    print(sim_to_str(sim_dict))
+    # print(sim_to_str(sim_dict))
 
 
 
@@ -103,6 +103,7 @@ class RandomDDRMASTester:
     hasCycles: bool
     similarityPercentage: float
     maxBodySize: int
+    maxHeight: int = 10000000
     similarity_function = lambda a, b: 1 if a==b or random.random() <= 0.1 else 0
     similarity_between_literals: dict = field(default_factory=dict)
     system: System = None
@@ -113,7 +114,7 @@ class RandomDDRMASTester:
 
     def create_system(self) -> System:
 
-        self.system = System(sim_threshold=1)
+        self.system = System(sim_threshold=1, max_argument_height=self.maxHeight )
 
         self.cycles_count = 0
 
@@ -538,17 +539,10 @@ async def perform_queries():
 
     exec_times = []
 
-    # agentsNumber=5
-    # literalsNumber=10 
-    # rulesNumber=10 
-    # sslPercentage=0.8
-    # cyclePercentage=0
-    # similarityPercentage=0.1
-
     if os.path.isfile("results.pkl"):
         os.remove("results.pkl")
 
-    timesRun = 1000
+    timesRun = 2000
     actualTimesRun = 0
 
     agentsNumber=20 
@@ -560,17 +554,17 @@ async def perform_queries():
     maxBodySize=3
     focusKbSize=3
 
+
+    # agentsNumber=5 
+    # literalsNumber=5
+    # rulesNumber=10
+    # sslPercentage=1
+    # hasCycles=False
+    # similarityPercentage=0.1
+    # maxBodySize=2
+    # focusKbSize=1
+
     for k in range(timesRun):
-
-        # tester = RandomDDRMASTester(
-        #     agentsNumber=3, 
-        #     literalsNumber=10, 
-        #     rulesNumber=10, 
-        #     sslPercentage=0.8, 
-        #     cyclePercentage=0,
-        #     similarityPercentage=0.1
-        # )
-
 
         tester = RandomDDRMASTester(
             agentsNumber=agentsNumber, 
@@ -582,34 +576,14 @@ async def perform_queries():
             maxBodySize=maxBodySize
         )
 
-
-
-        """ 
-        TODO: verificar o que se deseja registrar.
-            - Quantidade e tamanho médio dos argumentos gerados
-                - Uso de memória  --- Ok (quantidade de argumentos incluindo subargumentos)
-                - Verificação da existência de argumentos repetidos ou muito similares
-            - Tempo de execução médio -- Ok
-            - Quantidade de mensagens trocadas entre os agentes  -- Ok
-
-        """
-
         # signal.signal(signal.SIGALRM, handler)
 
         # signal.alarm(15)
 
-        # tester = RandomDDRMASTester(
-        #     agentsNumber=20, 
-        #     literalsNumber=100, 
-        #     rulesNumber=300, 
-        #     sslPercentage=0.8, 
-        #     cyclePercentage=0,
-        #     similarityPercentage=0.1200
-        # )
         tester.create_system()
-        print_system(tester.system)
+        # print_system(tester.system)
                 
-        print("\n\n\n--------query\n\n")
+        # print("\n\n\n--------query\n\n")
         ans, query_focus = None, None
         start_time = time.time()
         try:
@@ -662,7 +636,7 @@ async def perform_queries():
             with open('results.pkl', 'ab') as f:
                 pickle.dump(
                     {
-                        # "all_args": [arg.to_graph() for arg in all_args], 
+                        "all_args": [arg.to_graph() for arg in all_args], 
                         "len(all_args)":str(len(all_args)),
                         "query_focus": str(query_focus),
                         "sizes_messages": tester.system.size_messages_answers,
@@ -704,38 +678,42 @@ async def perform_queries():
     max_system = None
     max_similarities = None
     max_query_focus = None
-    with open('results.pkl', 'rb') as f:
-        for k in range(actualTimesRun):
-            
-            res = pickle.load(f)
+    try:
+        with open('results.pkl', 'rb') as f:
+            for k in range(actualTimesRun):
+                
+                res = pickle.load(f)
 
-            total_args = int(res["len(all_args)"])
-            # total_args = len(res["all_args"])
+                total_args = int(res["len(all_args)"])
+                # total_args = len(res["all_args"])
 
-            if total_args == 0:  ## IGNORANDO QUANDO NAO HA ARGUMENTOS
-                continue
+                if total_args == 0:  ## IGNORANDO QUANDO NAO HA ARGUMENTOS
+                    continue
 
-            if total_args >= max_args_len:
-                max_args_len = total_args
-                if "all_args" in res.keys():
-                    max_args = res["all_args"]
-                max_system = res["system"]
-                max_similarities = res["similarities"]
-                max_query_focus = res["query_focus"]
+                if total_args >= max_args_len:
+                    max_args_len = total_args
+                    if "all_args" in res.keys():
+                        max_args = res["all_args"]
+                    max_system = res["system"]
+                    max_similarities = res["similarities"]
+                    max_query_focus = res["query_focus"]
 
-            
-            amount_arguments_per_ans.append(total_args)
+                
+                amount_arguments_per_ans.append(total_args)
 
-            messages_exchanged_per_ans.append(res["messages_count"])
-            times_max_arguments_achieved.append(res["max_count"])
-            query_focuses_per_ans.append(res["query_focus"])
-            if not res["sizes_messages"]:
-                avg_sizes_messages_answers.append(0)
-                max_sizes_messages_answers.append(0)
-            else:
-                avg_sizes_messages_answers.append(sum(res["sizes_messages"])/len(res["sizes_messages"]))
-                max_sizes_messages_answers.append(max(res["sizes_messages"]))
-            # tvs_per_ans.append(res["tv"])
+                messages_exchanged_per_ans.append(res["messages_count"])
+                times_max_arguments_achieved.append(res["max_count"])
+                query_focuses_per_ans.append(res["query_focus"])
+                if not res["sizes_messages"]:
+                    avg_sizes_messages_answers.append(0)
+                    max_sizes_messages_answers.append(0)
+                else:
+                    avg_sizes_messages_answers.append(sum(res["sizes_messages"])/len(res["sizes_messages"]))
+                    max_sizes_messages_answers.append(max(res["sizes_messages"]))
+                # tvs_per_ans.append(res["tv"])
+    except:
+        print(actualTimesRun)
+        print("pickle error")
 
     logger.warning("Times in which max number of arguments was achieved: "+str(sum(times_max_arguments_achieved)))
 
@@ -774,7 +752,7 @@ async def perform_queries():
 
     if max_args:
         with open("args.dot", "w") as f:
-            f.write(complete_dot(str("".join(arg.to_graph() for arg in max_args))))
+            f.write(complete_dot(str("".join(arg for arg in max_args))))
 
         
 

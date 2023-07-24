@@ -102,6 +102,8 @@ class Agent:
         
         logger.info(f"""rlits não repetidos encontrados: {rlits_not_in_hist}
                     """)
+        
+
     
         for p1 in rlits_not_in_hist:
             
@@ -302,7 +304,6 @@ class Agent:
     ):
         async def build_subarguments_based_on_rule(rule: Rule):
             possible_subargs_r = list()
-            map_arg_to_q = dict()
             # serve como indice reverso para recordar qual argumento conclui qual q (pois o q se perde quando se usa l-literais similares)
 
             for q in rule.body:
@@ -315,29 +316,31 @@ class Agent:
 
                     if not has_focus_rule_for_q:
                         logger.info(f"LOGO APÓS queryagents, len(args_q) = {len(args_q)}")
-                        has_perfect_strength = any(not arg.is_fallacious() and arg.strength==1 for arg in args_q)
+                        has_perfect_strength = any(not arg.is_fallacious() for arg in args_q)
+
                         if not args_q or not has_perfect_strength:
                             all_agents_except_self = set(self.system.agents.values()).difference({self})
                             args_q.update(await self.query_agents(all_agents_except_self, q, focus, hist_p1))
-                   
+
+
                 elif isinstance(q.definer, Agent):
                     args_q = await self.query_agents([q.definer], q, focus, hist_p1)
                     
                 if not args_q:
-                    return (
-                        None,
-                        None,
-                    )  # não foi possível construir args para todos os membros do corpo
+                    return None # não foi possível construir args para todos os membros do corpo
 
+
+                not_fall_args = {arg for arg in args_q if not arg.is_fallacious()}
+                if not_fall_args:
+                    args_q = not_fall_args
+                if args_q:
+                    arg_q = max(args_q, key=lambda arg: arg.strength * arg.conclusion.label.strength(self))
                 # args_q = self.remove_redundant_args(args_q)
 
-                for arg in args_q:
-                    map_arg_to_q[arg] = q
-
-                possible_subargs_r.append(args_q)
+                possible_subargs_r.append((q, arg_q))
 
             # else
-            return possible_subargs_r, map_arg_to_q
+            return possible_subargs_r
 
         args_p1 = set()
         hist_p1 = hist + [p1.literal]
@@ -350,52 +353,38 @@ class Agent:
 
             logger.info(f"Processando regra: {rule}")
 
-            possible_subargs_r, map_arg_to_q = await build_subarguments_based_on_rule(
+            possible_subargs_r = await build_subarguments_based_on_rule(
                 rule
             )
-
 
             if possible_subargs_r is None:
                 logger.info(f"INDO PRA PROXIMA REGRA")
                 continue  # algum q não foi possível, logo não é possível usar a regra rule
 
-            args_p1_r = self.build_def_args_based_on_rule(
-                p1, possible_subargs_r, map_arg_to_q
+            arg_p1 = self.build_def_args_based_on_rule(
+                p1, possible_subargs_r
             )
 
-            args_p1.update(args_p1_r)
+            args_p1.add(arg_p1)
 
         return args_p1
 
     def build_def_args_based_on_rule(
-        self, p1, possible_subargs_r: list[set[Argument]], map_arg_to_q: dict
+        self, p1, possible_subargs_r: list[set[Argument]]
     ):
-        """
-        TODO: tentar refatorar
-        """
-        args_r = set()
 
-        if not possible_subargs_r:
-            arg_p1 = Argument(ArgNodeLabel(p1))  # "folha"
-            arg_p1.supp_by_justified = True
-            arg_p1.strength = 1.
-            return {arg_p1}
+        # if not possible_subargs_r:
+        #     arg_p1 = Argument(ArgNodeLabel(p1))  # "folha"
+        #     arg_p1.supp_by_justified = True
+        #     arg_p1.strength = 1.
+        #     return {arg_p1}
 
         try:
-            amount_args_resultant = 1
-            for args_set in possible_subargs_r:
-                amount_args_resultant *= len(args_set) 
+           
+            arg_p1 = Argument(ArgNodeLabel(p1))
 
-            amount_args_in_cache = sum(len(cached.result()[0]) + len(cached.result()[1]) for cached in self.cache_args.values() if cached.done())
-            if amount_args_resultant + amount_args_in_cache > self.system.MAX_ARGUMENTS_NUMBER_PER_QUERY:
-                self.system.max_arguments_times += 1
-                raise MaxArgsExceededException(list(self.system.query_focuses)[0], []) 
-            
-            for subargs_combinations in itertools.product(*possible_subargs_r):
-                arg_p1 = Argument(ArgNodeLabel(p1))
+            for (q, arg_q1) in possible_subargs_r:
 
-                for arg_q1 in subargs_combinations:
-                    q = map_arg_to_q[arg_q1]
                     arg_q1: Argument = arg_q1
                     q1 = arg_q1.conclusion.label
 
@@ -407,15 +396,13 @@ class Agent:
 
                     arg_p1.children.add(arg_q1)
 
-                if any(arg.rejected for arg in arg_p1.children):
-                    arg_p1.rejected = True
-                elif all(arg.justified for arg in arg_p1.children):
-                    arg_p1.supp_by_justified = True
+            if any(arg.rejected for arg in arg_p1.children):
+                arg_p1.rejected = True
+            elif all(arg.justified for arg in arg_p1.children):
+                arg_p1.supp_by_justified = True
 
-                arg_p1.update_strength() #TODO: verificare possibilidade e beneficios de se interromper geração de
-                ## argumentos quando um argumento com força 1 (max) for encontrado
+            arg_p1.update_strength() 
 
-                args_r.add(arg_p1)
 
         except Exception as exc:
             traceback.print_exc()
@@ -425,7 +412,8 @@ class Agent:
             #     logger.error(str(arg))
 
             raise exc
-        return args_r
+        
+        return arg_p1
 
     async def query_agents(
         self,
