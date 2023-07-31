@@ -21,12 +21,9 @@ from ddrmas_python.models.Literal import Literal
 from ddrmas_python.models.Rule import Rule
 
 from ddrmas_python.models.System import System
-from ddrmas_python.services.load_system_from_file import load_system_from_yaml_str
-from ddrmas_python.services.print_system import print_system
 
 from ddrmas_python.utils.base_logger import logger
 
-import signal
 import traceback
 
 import pickle
@@ -281,19 +278,6 @@ class RandomDDRMASTester:
             Ex: r_a16: (a1, aa1['M']) <= (@, ac1['M']), (a1, ac1['M'])  // keep only (@, ac1['M'])
 
             """ 
-            # to_remove = set()
-            # for bm1 in new_rule.body:
-            #     for bm2 in new_rule.body:
-            #         if bm1 != bm2 and bm1.has_equivalent_positive_literal(bm2, self.system.sim_function, self.system.sim_threshold):
-            #             if bm1.definer == Sign.SCHEMATIC:
-            #                 to_remove.add(bm2)
-            #             elif bm2.definer == Sign.SCHEMATIC:
-            #                 to_remove.add(bm1)
-
-            # for bm in to_remove:
-            #     new_rule.body.remove(bm)
-
-            # return new_rule
 
             to_remove = set()
             for bm1 in new_rule.body:

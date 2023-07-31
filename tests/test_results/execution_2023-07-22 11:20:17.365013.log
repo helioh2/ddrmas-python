@@ -1,0 +1,124 @@
+11:16:25,206 root INFO Agent Query Logging
+11:16:25,220 asyncio DEBUG Using selector: EpollSelector
+11:16:34,361 agentQuery WARNING Config:
+11:16:34,362 agentQuery WARNING Times Run: 2000
+11:16:34,362 agentQuery WARNING Agents Number: 5
+11:16:34,362 agentQuery WARNING Literals Number: 5
+11:16:34,362 agentQuery WARNING Rules Number: 10
+11:16:34,362 agentQuery WARNING ssl Percentage: 1
+11:16:34,362 agentQuery WARNING has cycles: True
+11:16:34,362 agentQuery WARNING similarity Percentage: 0.1
+11:16:34,365 agentQuery WARNING Times in which max number of arguments was achieved: 0
+11:16:34,365 agentQuery WARNING System of the greatest case:
+11:16:34,365 agentQuery WARNING agents:
+  a1:
+    rules:
+      r_a12: (a1, ~ae1['M']) <= (@, ad1['M'])
+      r_a14: (a1, ~ab1['M']) <= (@, ad1['M']); (@, ac1['M'])
+    trust:
+      a1: 1
+      b1: 0.5037103818485381
+      c1: 0.18835266630490044
+      d1: 0.0455385457668962
+      e1: 0.4870160784022609
+  b1:
+    rules:
+      r_b11: '(b1, ~ab1[''M'']) <= '
+      r_b12: '(b1, ~aa1[''M'']) <= '
+    trust:
+      a1: 0.4413023647980724
+      b1: 1
+      c1: 0.5728833424915105
+      d1: 0.5157252508320185
+      e1: 0.8082997443912808
+  c1:
+    rules:
+      r_c11: '(c1, ~aa1[''M'']) <= '
+      r_c13: (c1, ac1['M']) <= (@, ~ab1['M'])
+    trust:
+      a1: 0.8233077092230248
+      b1: 0.9827017553681778
+      c1: 1
+      d1: 0.41859420126477276
+      e1: 0.8180596671025078
+  d1:
+    rules:
+      r_d11: (d1, ~aa1['M']) <= (@, ae1['M']); (@, ab1['M'])
+      r_d12: '(d1, ae1[''M'']) <= '
+    trust:
+      a1: 0.33357559470103115
+      b1: 0.11339856673492621
+      c1: 0.19987587647504224
+      d1: 1
+      e1: 0.8738805237270993
+  e1:
+    rules:
+      r_e11: (e1, ~ac1['M']) <= (@, ~aa1['M'])
+      r_e13: (e1, ad1['M']) <= (@, ~ab1['M']); (@, ~ac1['M'])
+    trust:
+      a1: 0.7627888220477884
+      b1: 0.8152164284686939
+      c1: 0.3631085839119005
+      d1: 0.9426625755287145
+      e1: 1
+similarities:
+- theta(aa1['M'], ad1['M']) = 1
+
+11:16:34,365 agentQuery WARNING Query focus of the greatest case:
+11:16:34,365 agentQuery WARNING Zeta41: (e1, aa1['M']) by e1 with focus rules: 
+(F, ab1['M']) <= 
+
+11:16:34,365 agentQuery WARNING Similarities of the greatest case:
+11:16:34,365 agentQuery WARNING theta(aa1['M'], ad1['M']) = 1
+
+11:16:34,366 agentQuery WARNING Amounts of arguments ordered from greatest to smallest: [12, 11, 10, 10, 9, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+11:16:34,366 agentQuery WARNING Amount of arguments generated statistics:
+11:16:34,368 agentQuery WARNING                         0
+count               579.0
+mean   2.4110535405872193
+std    2.0781318372794844
+min                   1.0
+25%                   1.0
+50%                   1.0
+75%                   3.0
+max                  12.0
+11:16:34,371 agentQuery WARNING Amount of messages exchanged statistics:
+11:16:34,373 agentQuery WARNING                         0
+count               579.0
+mean    9.768566493955095
+std    15.442548281370987
+min                   0.0
+25%                   0.0
+50%                   0.0
+75%                  16.0
+max                  72.0
+11:16:34,375 agentQuery WARNING Times of execution statistics:
+11:16:34,377 agentQuery WARNING                             0
+count                   579.0
+mean    0.0006984503158015908
+std     0.0005917526413672217
+min    0.00016069412231445312
+25%    0.00025916099548339844
+50%    0.00043582916259765625
+75%     0.0010160207748413086
+max       0.00260162353515625
+11:16:34,381 agentQuery WARNING Average size of messages statistics:
+11:16:34,383 agentQuery WARNING                          0
+count                579.0
+mean    0.1440344258025605
+std    0.23006173764448182
+min                    0.0
+25%                    0.0
+50%                    0.0
+75%                   0.25
+max     0.9166666666666666
+11:16:34,386 agentQuery WARNING Max size of messages statistics:
+11:16:34,388 agentQuery WARNING                         0
+count               579.0
+mean   0.8255613126079447
+std     1.382904578651906
+min                   0.0
+25%                   0.0
+50%                   0.0
+75%                   1.0
+max                   7.0

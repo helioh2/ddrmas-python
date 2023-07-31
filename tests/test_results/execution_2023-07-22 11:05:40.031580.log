@@ -1,0 +1,10 @@
+10:57:33,591 root INFO Agent Query Logging
+10:57:33,607 asyncio DEBUG Using selector: EpollSelector
+10:59:28,363 agentQuery WARNING Config:
+10:59:28,363 agentQuery WARNING Times Run: 2000
+10:59:28,363 agentQuery WARNING Agents Number: 20
+10:59:28,363 agentQuery WARNING Literals Number: 20
+10:59:28,363 agentQuery WARNING Rules Number: 50
+10:59:28,363 agentQuery WARNING ssl Percentage: 0
+10:59:28,363 agentQuery WARNING has cycles: False
+10:59:28,363 agentQuery WARNING similarity Percentage: 0.1

@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import functools
-import itertools
 import traceback
-from operator import mul
 
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 
-from promise import Promise
 from ddrmas_python.models.ArgNodeLabel import ArgNodeLabel
-from ddrmas_python.models.Argument import ArgType, Argument
+from ddrmas_python.models.Argument import Argument
 from ddrmas_python.models.Answer import Answer, TruthValue
 from ddrmas_python.models.ILLiteral import ILLiteral
 from ddrmas_python.models.LLiteral import LLiteral, Sign
@@ -280,19 +276,6 @@ class Agent:
 
         # else
         return {"tv": False, "arg": None}
-
-
-    # def remove_redundant_args(args_q):
-
-    #     new_args_q = set()
-
-    #     for arg1 in args_q:
-    #         for arg2 in args_q:
-    #             if arg1 != arg2:
-    #                 leaf_nodes_arg1 = arg1.leaf_nodes()
-    #                 leaf_nodes_arg2 = arg2.leaf_nodes()
-    #                 if all(self.system.similar_enough(l_node) 
-
 
 
     async def find_defeasible_args(
